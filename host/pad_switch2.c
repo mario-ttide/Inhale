@@ -14,6 +14,9 @@
  * Windows only, and USB only: over Bluetooth the controller speaks a pairing and a link of Nintendo's own. HOS_SWITCH2=0
  * turns this off (a bridge program can then have the controller). */
 #include "hos.h"
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -343,7 +346,7 @@ static void report(const uint8_t *d, int n) {
         static int test = -1, last;
         static int64_t t0;
         static double rest, shaken;
-        if (test < 0) test = getenv("HOS_SWITCH2_RUMBLE_TEST") && atoi(getenv("HOS_SWITCH2_RUMBLE_TEST")) ? 1 : 0;
+        if (test < 0) test = env_on("HOS_SWITCH2_RUMBLE_TEST");
         if (test > 0) {
             const int x = (int16_t)(d[0x31] | (d[0x32] << 8));
             const int64_t now = hos_now_ns();
@@ -529,8 +532,7 @@ static DWORD WINAPI switch2_main(LPVOID unused) {
 /* Started with the pads (host/pad_sdl.c), once */
 void hos_switch2_start(void) {
     static LONG started;
-    const char *e = getenv("HOS_SWITCH2");
-    if (e && !atoi(e)) return;
+    if (!env_on_or("HOS_SWITCH2", 1)) return;
     if (!InterlockedExchange(&started, 1)) {
         CreateThread(NULL, 0, switch2_main, NULL, 0, NULL);
         CreateThread(NULL, 0, rumble_main, NULL, 0, NULL);

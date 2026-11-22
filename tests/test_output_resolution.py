@@ -7,10 +7,17 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # (python -I leaves the check's own folder off the path)
+from menu_model_fixture import menu_text, output_engine  # noqa: E402
 
 RUN_ALL_ARGS = ["--cxx", "{cxx}"]
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# (env_on, the switches' rule, before the code cut out of the sources: gpu/vk/compat/inhale_env.h)
+ENV_ON_H = str(Path(__file__).resolve().parents[1] / "gpu" / "vk" / "compat" / "inhale_env.h")
 
 
 def main():
@@ -19,7 +26,8 @@ def main():
     args = parser.parse_args()
 
     host = (ROOT / "host/nn_applet.c").read_text(encoding="utf-8")
-    menu = (ROOT / "gpu/vk/vk_menu.cpp").read_text(encoding="utf-8")
+    menu = (ROOT / "gpu" / "vk" / "vk_menu.cpp").read_text(encoding="utf-8")
+    upscaler = (ROOT / "gpu" / "vk" / "menu" / "upscaler.cpp").read_text(encoding="utf-8")   # (tx_resolution: the module's)
     fixture = r'''
 #define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
@@ -59,9 +67,9 @@ using namespace mkwvk;
 namespace ur = upscaler_rows;
 // (the screen's display modes: none, so the sizes offered before them)
 std::vector<display_modes::Size> screen_modes() { return {}; }
-''' + host[host.index("int hos_ini_option(const char *key, int otherwise);"):host.index("HLE(_ZN2nn2oe16GetOperationModeEv)")] + menu[
-        menu.index("struct Out {"):menu.index("/// The Render resolution: the value chosen")] + menu[
-        menu.index("const char* tx_output_res("):menu.index("const char* tx_speed(")] + r'''
+''' + host[host.index("int hos_ini_option(const char *key, int otherwise);"):host.index("HLE(_ZN2nn2oe16GetOperationModeEv)")] + \
+        output_engine(ROOT, "/// The Output resolution: the game's own reduced size") + \
+        upscaler[upscaler.index("const char* tx_resolution(int v) {"):upscaler.index("\n}\n", upscaler.index("const char* tx_resolution(int v) {")) + 3] + r'''
 int main(int argc, char **argv) {
     assert(argc == 7);
     const int mode = atoi(argv[1]), pool = atoi(argv[5]);   // (mode: the menu's choice, 6 the player's own size)
@@ -355,13 +363,13 @@ int main() {
     with tempfile.TemporaryDirectory(prefix="output-default-") as tmp:
         source, exe = Path(tmp) / "rule.cpp", Path(tmp) / "rule.exe"
         source.write_text(rule, encoding="utf-8")
-        subprocess.run([args.cxx, "-std=c++17", "-I", str(ROOT), str(source), "-o", str(exe)], check=True)
+        subprocess.run([args.cxx, "-std=c++17", "-include", ENV_ON_H, "-I", str(ROOT), str(source), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
     with tempfile.TemporaryDirectory(prefix="output-resolution-") as tmp:
         work = Path(tmp)
         source, exe = work / "fixture.cpp", work / "fixture.exe"
         source.write_text(fixture, encoding="utf-8")
-        subprocess.run([args.cxx, "-std=c++17", "-I", str(ROOT), str(source), "-o", str(exe)], check=True)
+        subprocess.run([args.cxx, "-std=c++17", "-include", ENV_ON_H, "-I", str(ROOT), str(source), "-o", str(exe)], check=True)
         for saved, handheld, override, mode, w, h, label, pool, writes in cases:
             (work / "inhale_options.ini").write_text(   # (saved None: no output_res= line, a new install)
                 ("" if saved is None else f"output_res={saved}\n") + f"handheld_profile={handheld}\n", encoding="ascii")

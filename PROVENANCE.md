@@ -3,7 +3,7 @@
 Inhale is a modified version of Longshot, made by importing part of Longshot's tree once and changing it.
 
     upstream:       https://git.magicbean.dev/MagicBeanDev/Longshot.git
-    upstream-base:  09cbdd979eacfbd0c83e27fad7e50380985af02d
+    upstream-base:  a2dc5385901812d183c4b7f0f9d48b295f17a510
     imported:       2026-11-16
 
 `scripts/sync_upstream.py` reads the `upstream-base` line, brings Longshot's later changes over and rewrites the line.
@@ -23,8 +23,9 @@ stand between the two trees.
 ## What was imported
 
 With the same paths as in Longshot: `nx2/`, `host/`, `gpu/`, `third_party/`, `tests/`, `scripts/`, `LICENSE`,
-`requirements.txt`, `.gitattributes`, `.gitignore`, and one document, `docs/compiler-memory-accounting.md` (a code
-comment in `nx2/build.py` points at it).
+`requirements.txt`, `.gitattributes`, `.gitignore`, and three documents, `docs/dev/reference/architecture.md`,
+`threads.md` and `build.md`: the code's `doc:` comments name their rules (`tests/test_doc_anchors.py`). Until the
+sync to `v3.1.1` it was one, `docs/compiler-memory-accounting.md`, which Longshot folded into `build.md`.
 
 ## Adapted for this fork's release packages
 
@@ -54,21 +55,21 @@ tooling; they are not imported files, and a sync does not touch them.
 The file of that name here is a stand-in written for Inhale, with the same function names and empty tables.
 
 Scripts of Longshot's releases, packaging, team workflow, and of the other game's saves and tour
-(32 files):
+(35 files):
 
 `scripts/builder_package.py`, `scripts/check_guide_screenshots.py`, `scripts/check_pr_description.py`,
-`scripts/check_windows_files.py`, `scripts/cpu_candidates.json`, `scripts/cpu_categories.py`,
+`scripts/check_windows_files.py`, `scripts/ci_secret.sh`, `scripts/cpu_candidates.json`, `scripts/cpu_categories.py`,
 `scripts/cpu_functions.json`, `scripts/cpu_report.py`, `scripts/crash_groups.py`, `scripts/dev_build.py`,
 `scripts/dev_packs.py`, `scripts/fetch_commit.sh`, `scripts/forge.py`, `scripts/hardware_report.py`,
-`scripts/job_queue.py`, `scripts/linux/Dockerfile`, `scripts/linux/appimage.sh`,
-`scripts/linux/check_player_build.sh`, `scripts/linux/deps.sh`, `scripts/linux/docker.sh`,
-`scripts/longshot_saves.py`, `scripts/pipeline_tour.py`, `scripts/release.py`, `scripts/release_keys.json`,
-`scripts/screenshots/LauncherCapture.cs`, `scripts/screenshots/capture_launcher.py`,
-`scripts/screenshots/capture_menu.py`, `scripts/screenshots/launcher-packages.lock.json`,
-`scripts/screenshots/menu.cpp`, `scripts/tested_configurations.py`, `scripts/tooling.py`, `scripts/tools.py`
+`scripts/job_queue.py`, `scripts/linux/Dockerfile`, `scripts/linux/appimage.sh`, `scripts/linux/check_player_build.sh`,
+`scripts/linux/deps.sh`, `scripts/linux/docker.sh`, `scripts/longshot_saves.py`, `scripts/pipeline_tour.py`,
+`scripts/release.py`, `scripts/release_keys.json`, `scripts/screenshots/LauncherCapture.cs`,
+`scripts/screenshots/capture_launcher.py`, `scripts/screenshots/capture_menu.py`,
+`scripts/screenshots/launcher-packages.lock.json`, `scripts/screenshots/menu.cpp`, `scripts/setup.py`,
+`scripts/tested_configurations.py`, `scripts/tooling.py`, `scripts/tools.py`, `scripts/website_check.sh`
 
 Tests and fixtures bound to something left out above, or to the text of the original `nx2/oot_patches.py`
-(144 files):
+(162 files):
 
 `tests/builder_cli/.gitignore`, `tests/builder_cli/BuilderCliTests.csproj`, `tests/builder_cli/NuGet.Config`,
 `tests/builder_cli/Program.cs`, `tests/builder_workers/obj/BuilderWorkersTests.csproj.nuget.dgspec.json`,
@@ -81,44 +82,49 @@ Tests and fixtures bound to something left out above, or to the text of the orig
 `tests/builder_workers/obj/Debug/net8.0-windows/BuilderWorkersTests.GlobalUsings.g.cs`,
 `tests/builder_workers/obj/Debug/net8.0-windows/BuilderWorkersTests.assets.cache`,
 `tests/builder_workers/obj/project.assets.json`, `tests/builder_workers/obj/project.nuget.cache`,
-`tests/dlss_feature_size_test.cpp`, `tests/draw_stream_visibility_test.cpp`, `tests/frame_overlap_test.cpp`,
-`tests/fsr_image_retirement_test.cpp`, `tests/fsr_uniform_ownership_test.cpp`, `tests/hold_gpu_test.cpp`,
-`tests/invalidate_quick_test.cpp`, `tests/linux_pressure_test.cpp`, `tests/mesh_fallback_layout_ir.cpp`,
-`tests/mesh_fallback_layout_model.cpp`, `tests/nonuniform_image_arrays_ir.cpp`, `tests/parallel_init_order_test.cpp`,
-`tests/portable_builder_home_test.cs`, `tests/portable_setup_home_test.c`, `tests/pr_description/good.md`,
-`tests/setup_tar_diagnostics_test.c`, `tests/test_appimage_headers.py`, `tests/test_appimage_licenses.py`,
-`tests/test_appimage_package_retry.py`, `tests/test_appimage_player_build.py`, `tests/test_appimage_prompt_fonts.py`,
-`tests/test_appimage_scripts.py`, `tests/test_appimage_source_headers.py`, `tests/test_bug_report.py`,
+`tests/dlss_feature_size_test.cpp`, `tests/draw_stream_visibility_test.cpp`, `tests/driver_cache_env_test.cpp`,
+`tests/frame_overlap_test.cpp`, `tests/fsr_image_retirement_test.cpp`, `tests/fsr_uniform_ownership_test.cpp`,
+`tests/hold_gpu_test.cpp`, `tests/invalidate_quick_test.cpp`, `tests/linux_pressure_test.cpp`,
+`tests/mesh_fallback_capacity_test.cpp`, `tests/mesh_fallback_layout_ir.cpp`, `tests/mesh_fallback_layout_model.cpp`,
+`tests/nonuniform_image_arrays_ir.cpp`, `tests/parallel_init_order_test.cpp`, `tests/portable_builder_home_test.cs`,
+`tests/portable_setup_home_test.c`, `tests/pr_description/good.md`, `tests/setup_tar_diagnostics_test.c`,
+`tests/test_appimage_headers.py`, `tests/test_appimage_licenses.py`, `tests/test_appimage_package_retry.py`,
+`tests/test_appimage_player_build.py`, `tests/test_appimage_prompt_fonts.py`, `tests/test_appimage_scripts.py`,
+`tests/test_appimage_source_headers.py`, `tests/test_astc_pass_timing.py`, `tests/test_bug_report.py`,
 `tests/test_builder_own_python.py`, `tests/test_builder_python.py`, `tests/test_builder_xml_valid.py`,
 `tests/test_camera_centering.py`, `tests/test_camera_speed.py`, `tests/test_check_pr_description.py`,
 `tests/test_commit_room.py`, `tests/test_cpu_report.py`, `tests/test_cpu_target.py`, `tests/test_crash_dialog.py`,
-`tests/test_crash_groups.py`, `tests/test_dev_build.py`, `tests/test_dev_packs.py`, `tests/test_driver_env_choose.py`,
+`tests/test_crash_groups.py`, `tests/test_dev_ab.py`, `tests/test_dev_build.py`, `tests/test_dev_packs.py`,
+`tests/test_drive_target.py`, `tests/test_driver_cache_env.py`, `tests/test_driver_env_choose.py`,
 `tests/test_exe_icon.py`, `tests/test_floor_carry_step.py`, `tests/test_frame_overlap.py`,
 `tests/test_frame_rate_cap_step.py`, `tests/test_frame_whole.py`, `tests/test_free_view_anchor.py`,
-`tests/test_gpu_clock.py`, `tests/test_guide_screenshots.py`, `tests/test_hardware_report.py`,
-`tests/test_high_fps_fixes.py`, `tests/test_hle_stats.py`, `tests/test_hold_gpu.py`, `tests/test_horse_jump_step.py`,
-`tests/test_hud_layout_row.py`, `tests/test_job_queue.py`, `tests/test_launcher_capture.py`,
-`tests/test_linux_deps_pins.py`, `tests/test_linux_docker_packages.py`, `tests/test_linux_downgrade.py`,
-`tests/test_linux_pressure.py`, `tests/test_linux_tools.py`, `tests/test_linux_update.py`,
-`tests/test_longshot_launch.py`, `tests/test_longshot_saves.py`, `tests/test_loop_step.py`,
-`tests/test_make_game_ngx.py`, `tests/test_mark_groups.py`, `tests/test_menu_hooks.py`,
-`tests/test_mesh_fallback_layout.py`, `tests/test_met_wait_capture.py`, `tests/test_mise_build.py`,
-`tests/test_movement_speed.py`, `tests/test_movie_frame_count.py`, `tests/test_no_release_lookup.py`,
-`tests/test_no_webgpu.py`, `tests/test_ocarina_wait.py`, `tests/test_oot_barrier.py`, `tests/test_oot_cloth_60.py`,
+`tests/test_function_ends.py`, `tests/test_gpu_clock.py`, `tests/test_guide_screenshots.py`,
+`tests/test_hardware_report.py`, `tests/test_high_fps_fixes.py`, `tests/test_hle_stats.py`, `tests/test_hold_gpu.py`,
+`tests/test_horse_jump_step.py`, `tests/test_hud_layout_row.py`, `tests/test_job_queue.py`,
+`tests/test_jump_takeoff_step.py`, `tests/test_launcher_capture.py`, `tests/test_linux_deps_pins.py`,
+`tests/test_linux_docker_packages.py`, `tests/test_linux_downgrade.py`, `tests/test_linux_pressure.py`,
+`tests/test_linux_tools.py`, `tests/test_linux_update.py`, `tests/test_longshot_launch.py`,
+`tests/test_longshot_saves.py`, `tests/test_loop_step.py`, `tests/test_make_game_ngx.py`, `tests/test_mark_groups.py`,
+`tests/test_menu_hooks.py`, `tests/test_mesh_fallback_capacity.py`, `tests/test_mesh_fallback_layout.py`,
+`tests/test_met_wait_capture.py`, `tests/test_mise_build.py`, `tests/test_movement_speed.py`,
+`tests/test_movie_frame_count.py`, `tests/test_no_release_lookup.py`, `tests/test_no_webgpu.py`,
+`tests/test_ocarina_wait.py`, `tests/test_ocb_hold.py`, `tests/test_oot_barrier.py`, `tests/test_oot_cloth_60.py`,
 `tests/test_oot_cloth_time.py`, `tests/test_oot_damage.py`, `tests/test_oot_heap_retry.py`,
 `tests/test_oot_state_tap.py`, `tests/test_oot_voice_option.py`, `tests/test_opening_skip.py`,
-`tests/test_patch_hooks_defined.py`, `tests/test_pipeline_state_sources.py`, `tests/test_pipeline_tour.py`,
-`tests/test_portable_builder_home.py`, `tests/test_portable_builder_startup.py`, `tests/test_portable_setup_paths.py`,
-`tests/test_portable_setup_start.py`, `tests/test_portable_setup_transaction.py`, `tests/test_precompile_save.py`,
-`tests/test_prepare_at_build.py`, `tests/test_present_queue_default.py`, `tests/test_quick_pipelines.cpp`,
+`tests/test_pass_timing_fallback.py`, `tests/test_patch_hooks_defined.py`, `tests/test_perf_report.py`,
+`tests/test_pipeline_state_sources.py`, `tests/test_pipeline_tour.py`, `tests/test_portable_builder_home.py`,
+`tests/test_portable_builder_startup.py`, `tests/test_portable_setup_paths.py`, `tests/test_portable_setup_start.py`,
+`tests/test_portable_setup_transaction.py`, `tests/test_precompile_save.py`, `tests/test_prepare_at_build.py`,
+`tests/test_present_queue_default.py`, `tests/test_prompts_size_table.py`, `tests/test_quick_pipelines.cpp`,
 `tests/test_quick_pipelines.py`, `tests/test_readme_menu_rows.py`, `tests/test_recomplauncher_json.py`,
-`tests/test_release.py`, `tests/test_saved_turn_rate.py`, `tests/test_scarecrow_timing.py`,
-`tests/test_scene_format.py`, `tests/test_setup_rename_retry.py`, `tests/test_setup_runtime.py`,
-`tests/test_setup_runtime_paths.py`, `tests/test_setup_tar_diagnostics.py`, `tests/test_setup_tool_merge.py`,
-`tests/test_ship_state_list.py`, `tests/test_shipped_hot_list.py`, `tests/test_skip_title.py`,
-`tests/test_song_note_cue.py`, `tests/test_split_before_draw.py`, `tests/test_stick_dead_zone.py`,
-`tests/test_tested_configurations.py`, `tests/test_tex_compact.py`, `tests/test_text_size.py`,
-`tests/test_text_speed.py`, `tests/test_texture_ahead.cpp`, `tests/test_texture_ahead.py`,
+`tests/test_release.py`, `tests/test_renhdrum.py`, `tests/test_routes.py`, `tests/test_saved_turn_rate.py`,
+`tests/test_scarecrow_timing.py`, `tests/test_scene_format.py`, `tests/test_settings_table.py`,
+`tests/test_setup_rename_retry.py`, `tests/test_setup_runtime.py`, `tests/test_setup_runtime_paths.py`,
+`tests/test_setup_tar_diagnostics.py`, `tests/test_setup_tool_merge.py`, `tests/test_ship_state_list.py`,
+`tests/test_shipped_hot_list.py`, `tests/test_skip_title.py`, `tests/test_song_note_cue.py`,
+`tests/test_split_before_draw.py`, `tests/test_sprint.py`, `tests/test_stick_dead_zone.py`,
+`tests/test_target_reuse_memory.py`, `tests/test_tested_configurations.py`, `tests/test_tex_compact.py`,
+`tests/test_text_size.py`, `tests/test_text_speed.py`, `tests/test_texture_ahead.cpp`, `tests/test_texture_ahead.py`,
 `tests/test_third_party_objects.py`, `tests/test_threaded_rendering.py`, `tests/test_tools_lock.py`,
 `tests/test_vk_pgo.py`, `tests/test_vulkan_fixtures_ci.py`, `tests/test_water_substeps.py`,
 `tests/test_web_floor_steps.py`, `tests/test_windows_on_linux.py`, `tests/test_windows_package_frameworks.py`,
@@ -165,6 +171,18 @@ on without it (`tests/test_prepare_cache_save.py`), and three new ones with the 
 `tests/test_capture_read_once.py`, `tests/test_host_guest_writes.py`, `tests/test_prepare_cache_save.py`,
 `tests/test_vbytes.py`, `tests/vbytes_test.c`
 
+The same at `v3.1.1` (`a2dc5385`), the fourth sync, on the same machine: nine that passed before, whose source moved
+on without them, and eight new ones with the IR file one of them compiles. `tests/test_menu_i18n.py`, which fails
+there too, is kept: two checks of this fork import it, and it reads `gpu/vk/vk_ui.h` here, where its missing text is
+(18 files):
+
+`nx2/test_import_windows.py`, `tests/sim_turf_pools_ir.cpp`, `tests/test_close_waits_for_save.py`,
+`tests/test_compile_zero_byte.py`, `tests/test_damaged_rom_files.py`, `tests/test_fs_save_commit.py`,
+`tests/test_guest_copies.py`, `tests/test_hold_toggle.py`, `tests/test_insn_fixed_convert.py`,
+`tests/test_lower_atomg_cas.py`, `tests/test_menu_keys.py`, `tests/test_menu_slider_ends.py`,
+`tests/test_pads_after_menu.py`, `tests/test_recording_admission.py`, `tests/test_sim_turf_pools.py`,
+`tests/test_sim_turf_settings.py`, `tests/test_tls_objects.py`, `tests/test_vibration_menu.py`
+
 ## Files changed at import
 
 - `host/discord_rpc.c`: no default Discord application id (Longshot's id named Longshot's application).
@@ -184,8 +202,11 @@ on without it (`tests/test_prepare_cache_save.py`), and three new ones with the 
 - `host/control.c`, `scripts/longshot_ctl.py`, `tests/run_all.py`, `tests/test_doc_anchors.py`,
   `tests/test_switches_removed.py`: comments reworded, and the last one's list of scanned paths cut to those that
   exist here.
-- `gpu/shaderbatch.cpp`, `gpu/vk/vk_dump.h`, `host/mouse_native.c`, `nx2/bake.py`, `tests/test_bake_mimo.py`,
-  `tests/f2i_immediate/README.md`: dash characters in comments replaced with ASCII (`tests/test_hygiene.py`).
+- `gpu/vk/vk_dump.h`, `host/mouse_native.c`, `tests/f2i_immediate/README.md`: dash characters in comments replaced
+  with ASCII (`tests/test_hygiene.py`). The same at the sync to `v3.1.1`, in Longshot's new lines of
+  `gpu/render/rx_nvn.h`, `gpu/vk/vk_internal.h`, `gpu/vk/vk_main.cpp`, `gpu/vk/vk_replay.cpp`, `host/hos_crash_dialog.c`,
+  `host/hos_main.c`, `nx2/perf_report.py` and `tests/test_present_semaphores.py`. (`gpu/shaderbatch.cpp`, `nx2/bake.py`
+  and `tests/test_bake_mimo.py` were in this list: Longshot removed them at `v3.1.1`.)
 - `.gitignore`: no exception for saves, this game's data formats added, the tools' Python environment added.
 
 Changes made after the import are ordinary commits of this repository and are not listed here.

@@ -78,6 +78,9 @@ bool program_cache_has(uint64_t key);
 std::unordered_set<uint64_t> program_cache_kept_keys();
 /// The keys of the kept compute programs still in the file's list (the first start's warm: vk_draw.cpp precompile_warm)
 std::vector<uint64_t> program_cache_compute_keys();
+/// The steps precompile_at_create would count now: its programs and their mesh fallback compute pipelines (the first start's bar:
+/// vk_draw.cpp precompile_run, start_steps.h)
+size_t program_cache_fallback_steps();
 /// The records of key not read in yet, as the index has them (none: no such key, or all read in)
 std::vector<DiskRecord> program_cache_records(uint64_t key);
 /// A record's variant (the hash of its answers) from its head alone, read by position. False: the head does not read
@@ -88,6 +91,8 @@ std::vector<DiskRecord> program_cache_take(uint64_t key, const std::vector<DiskR
 /// needs. program_cache_complete reads the code and makes the module. Null: not a record to read this way
 std::unique_ptr<Program> program_cache_read_light(FILE* in, std::mutex* mu, uint64_t key, const DiskRecord& d);
 bool program_cache_complete_unshared(Program& p, FILE* in);   // (program_cache_complete for a program no other thread has yet)
+/// (longshot) The bytes of a light-read program's code its record holds itself: none when its SPIR-V is in the shader store
+uint64_t program_cache_code_in_record(int64_t code_at, uint64_t words);
 /// The cache's file, for a thread's own handle on it (empty: no cache)
 std::string program_cache_path();
 

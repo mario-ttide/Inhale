@@ -2,7 +2,9 @@
 
 Upstream's file of this name holds text matched against another game's lifted code. That text is not carried here: this
 stand-in keeps the names the lift calls, with empty tables, so the lift's edit passes run and change nothing. A game
-patch for Inhale goes in a file of its own (nx2/kirby_*.py), gated on this game's build id.
+patch for Inhale goes in a file of its own (a kirby_ module of nx2/), gated on this game's build id. (Not
+written with a star before .py: make_game.py's PY_MADE takes that for a module's name made at run time, and the lift
+key then hashes every module whole.)
 """
 import collections
 

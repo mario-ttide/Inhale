@@ -1,10 +1,13 @@
 // tests/test_perf_report.py: gpu/vk/perf_report.h, the performance summary: its interval, its buckets, what a hitch is and what it waited on,
-// the pacing misses, the JSON the relay takes, and what a frame costs to add
+// the pacing misses, the JSON the relay takes, the cells and bins a sample is sent as, and what a frame costs to add.
+// Given a folder (argv[1]) it also writes what the Python side judges with the relay's own rules: every summary the size
+// cases make (size-*.json: the sender re-encodes them) and the exact places and what was sent for them (pairs.tsv)
 #include "../gpu/vk/perf_report.h"
 
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 
 #define CHECK(name, condition) do { if (!(condition)) { std::fprintf(stderr, "FAIL %s at line %d\n", name, __LINE__); return 1; } } while (0)
 
@@ -18,7 +21,120 @@ static fs::Frame frame(float ms, float game, float render, float gpu_wait, float
     return f;
 }
 
-int main() {
+/// A sample at a place and view, and one number of what is sent for it (the JSON's, as the relay reads it)
+static pr::PositionSample at(double x, double y, double z, double yaw = 0, double pitch = 0) {
+    pr::PositionSample s;
+    s.map = "Kokiri Forest (child)", s.x = x, s.y = y, s.z = z, s.yaw = yaw, s.pitch = pitch, s.frames = 1;
+    return s;
+}
+static double sent(const pr::PositionSample& s, const char* key) {
+    const std::string j = pr::sample_json(s), k = std::string("\"") + key + "\":";
+    return std::strtod(j.c_str() + j.find(k) + k.size(), nullptr);
+}
+/// The relay's cell for a position (Inhale-api's telemetry/perf/totals.go addPosition: math.Round(v / 100) * 100, a half
+/// away from zero), written here from its public rule and not from the header under test
+static double nearest_100(double v) { return std::round(v / 100) * 100; }
+
+// The size cases: the biggest summaries there can be (16 maps with long names and every count set, a sample each second of
+// the longest period, the numbers play gives and the widest ones there are), names of 1, 2, 3 and 4 UTF-8 bytes a
+// character, and the usual one map. The sender refuses one over its MAX_BODY, and a refused summary is deleted with its map
+// totals; tests/test_perf_report.py re-encodes what is written here the way the sender does
+static std::map<std::string, pr::MapTotals> every_count_set(const std::vector<std::string>& names) {
+    std::map<std::string, pr::MapTotals> full;
+    for (size_t k = 0; k < names.size(); k++) {
+        auto& t = full[names[k]];
+        t.fresh = k % 2, t.seconds = 52.517 + (double)k;
+        for (auto& v : t.frame) v = 123456;
+        for (auto& v : t.gpu) v = 123456;
+        for (auto& v : t.hitch) v = 12345;
+        for (auto& v : t.event) v = 1234;
+        for (auto& v : t.part) v = 123456.789;
+        t.frame_sum = t.gpu_sum = 987654.321, t.pacing_misses = t.left_out = 123456;
+        t.movie_shown = t.movie_dropped = t.movie_late = t.movie_fallbacks = 12345, t.movie_decode_ms = 12345.678;
+    }
+    return full;
+}
+
+static void write_size_cases(const std::string& folder) {
+    pr::Machine mc;
+    mc.version = "v1-189-g0123abc (source 99)", mc.release = true, mc.os = "Windows 11", mc.kernel = "10.0.26100";
+    mc.gpu = "NVIDIA GeForce RTX 4070", mc.driver = "621.10", mc.cpu = "13th Gen Intel(R) Core(TM) i7-13700F";
+    mc.upscaler = "DLSS", mc.preset = "Balanced", mc.vram_gb = 12, mc.ram_gb = 32, mc.fps_cap = 60;
+    const pr::Memory mem{5.25, 15.5, 7.75};
+    struct Case {
+        const char* file;
+        int bytes;   // (a name's bytes a character: 0 the ASCII dungeon names, -1 the one usual map)
+        int maps, samples;
+        bool widest;
+    };
+    const Case cases[] = {{"ascii16", 0, 16, pr::kPeriodMax, false}, {"two-byte16", 2, 16, pr::kPeriodMax, false},
+                          {"three-byte16", 3, 16, pr::kPeriodMax, false}, {"four-byte16", 4, 16, pr::kPeriodMax, false},
+                          {"long-names16", 1, 16, pr::kPeriodMax, false}, {"widest-numbers16", 0, 16, pr::kPeriodMax, true},
+                          {"one-map-five-minutes", -1, 1, pr::kPeriodDefault, false}, {"one-map-longest", -1, 1, pr::kPeriodMax, false}};
+    for (const Case& cs : cases) {
+        std::vector<std::string> names;
+        for (int k = 0; k < cs.maps; k++) {
+            char b[160];
+            std::string n;
+            if (cs.bytes == -1) n = "Kokiri Forest (child)";
+            else if (cs.bytes == 0) snprintf(b, sizeof b, "Dungeon_%02d_LowerFloor_BossRoom_Main (adult) X", k), n = b;
+            else {
+                snprintf(b, sizeof b, "%02d", k), n = b;
+                const char* one[] = {"", "M", "\xc3\xa9", "\xe4\xb8\xad", "\xf0\x9f\x98\x80"};   // (1 to 4 bytes a character)
+                while (n.size() + strlen(one[cs.bytes]) <= 120) n += one[cs.bytes];
+            }
+            names.push_back(n);
+        }
+        const auto maps = every_count_set(names);
+        std::vector<pr::PositionSample> samples;
+        for (int i = 0; i < cs.samples; i++) {
+            pr::PositionSample s = {names[(size_t)i % names.size()], -12345.678 + i * 7.123, 1234.567, 9876.543 - i, -3.14159 + i * 0.007,
+                                    -1.23456 + i * 0.002, 61, 60, 3, 1016.667, 823.456};
+            if (cs.widest)
+                s.x = -999999.5 + i, s.y = s.z = -999999.5, s.frames = s.gpu_frames = s.hitches = 99999, s.frame_ms = s.gpu_ms = 99999999.999;
+            samples.push_back(s);
+        }
+        std::ofstream(folder + "/size-" + cs.file + ".json", std::ios::binary) << pr::summary_json(mc, false, 840.25, names[0], &mem, maps, samples);
+    }
+}
+
+// The exact places and views a player has, and the JSON the game makes of each: the relay's rules judge the pairs (the
+// Python side). The places are the floats the host reads (so the ties of the relay's rounding, the odd multiples of 50, are
+// exact), the angles are from the range the host gives: yaw -pi to pi and pitch -pi/2 to pi/2, their edges included
+static void write_pairs(const std::string& folder) {
+    std::ofstream out(folder + "/pairs.tsv");
+    const double pi = 3.14159265358979323846;
+    uint32_t seed = 12345;
+    const auto random = [&seed](double low, double high) {
+        seed = seed * 1664525u + 1013904223u;
+        return low + (high - low) * ((seed >> 8) / 16777216.0);
+    };
+    std::vector<pr::PositionSample> all;
+    for (int k = -80; k <= 80; k++)   // (every multiple of 25: the cells' middles, their edges and their ties)
+        all.push_back(at((float)(k * 25.0), (float)(-k * 25.0 + 12.5), (float)(k * 25.0 - 12.5)));
+    for (int i = 0; i < 20000; i++)
+        all.push_back(at((float)random(-3000, 3000), (float)random(-3000, 3000), (float)random(-3000, 3000), (float)random(-pi, pi),
+                         (float)random(-pi / 2, pi / 2)));
+    for (int k = -32; k <= 32; k++)   // (every edge of the yaw bins and the pitch bins, and the floats beside each)
+        for (int j = -1; j <= 1; j++) {
+            const double yaw = k * pi / 32 + j * 1e-6, pitch = k * pi / 64 + j * 1e-6;
+            all.push_back(at(0, 0, 0, std::clamp(yaw, -pi, pi), std::clamp(pitch, -pi / 2, pi / 2)));
+        }
+    for (const double yaw : {-pi, pi, (double)std::nextafterf((float)pi, 0.0f), -(double)std::nextafterf((float)pi, 0.0f)})
+        all.push_back(at(0, 0, 0, yaw, 0));
+    for (const double pitch : {-pi / 2, pi / 2, (double)std::nextafterf((float)(pi / 2), 0.0f)})
+        all.push_back(at(0, 0, 0, 0, pitch));
+    char line[256];
+    for (const auto& s : all) {
+        snprintf(line, sizeof line, "%.17g\t%.17g\t%.17g\t%.17g\t%.17g\t", s.x, s.y, s.z, s.yaw, s.pitch);
+        out << line << pr::sample_json(s) << "\n";
+    }
+}
+
+int main(int argc, char** argv) {
+    // (first: the Python side judges what is written even when a check below fails)
+    if (argc > 1) write_size_cases(argv[1]), write_pairs(argv[1]);
+
     // the buckets: the relay's lists, an upper bound each, +Inf last
     CHECK("counts", pr::kFrameBucketCount == 13 && pr::kGpuBucketCount == 11 && pr::kFineBucketCount == 19);
     CHECK("a cut never splits a character", pr::json_text("ab\xc3\xa9", 3) == "\"ab\"" && pr::json_text("ab\xc3\xa9", 4) == "\"ab\xc3\xa9\"");
@@ -109,13 +225,43 @@ int main() {
         CHECK("hitches", j.find("\"hitches\":{\"pipeline_wait\":1,") != std::string::npos);
         CHECK("memory", j.find("\"memory\":{\"vram_used_gb\":5.25,\"vram_allowed_gb\":15.5,\"ram_used_gb\":7.75}") != std::string::npos);
         CHECK("numbers", j.find("\"session_s\":312.5,") != std::string::npos && j.find("\"fps_cap\":60,") != std::string::npos);
-        // (the middle of the 100-unit cell and of the 45-degree yaw and 30-degree pitch bins, never the exact place:
-        // x -123.5 is in [-200, -100), yaw -1.2 in [-pi/2, -pi/4), pitch 0.25 in [0, pi/6))
-        CHECK("per-second position and view, as cells and bins", j.find("\"samples\":[{\"map\":\"Kokiri Forest (child)\",\"x\":-150,\"y\":50,\"z\":50,\"yaw\":-1.178,\"pitch\":0.262,\"frames\":60,\"frame_ms\":1000,\"gpu_frames\":59,\"gpu_ms\":800,\"hitches\":2}") != std::string::npos);
+        // (a sample is sent as its cell, the nearest multiple of 100 as the relay rounds a place (-123.5 to -100, 4 to 0,
+        // 98.25 to 100), and the middle of its 45-degree yaw and 30-degree pitch bin (-1.2 is in [-pi/2, -pi/4), 0.25 in
+        // [0, pi/6)), never the exact place)
+        CHECK("per-second position and view, as cells and bins", j.find("\"samples\":[{\"map\":\"Kokiri Forest (child)\",\"x\":-100,\"y\":0,\"z\":100,\"yaw\":-1.178,\"pitch\":0.262,\"frames\":60,\"frame_ms\":1000,\"gpu_frames\":59,\"gpu_ms\":800,\"hitches\":2}") != std::string::npos);
         CHECK("no exact place", j.find("-123.5") == std::string::npos && j.find("98.25") == std::string::npos);
-        CHECK("a cell's middle stays in its cell", pr::bin_middle(pr::bin_middle(-123.5, pr::kCell), pr::kCell) == -150 &&
-                                                       pr::bin_middle(-0.001, pr::kCell) == -50 && pr::bin_middle(0, pr::kCell) == 50);
         CHECK("closed", j.back() == '}' && std::count(j.begin(), j.end(), '{') == std::count(j.begin(), j.end(), '}'));
+
+        // the cells: a place is sent as its nearest multiple of 100, which is how the relay's math.Round(v / 100) * 100 files an
+        // exact place (a half goes away from zero): it files the sent value under the same cell, and rounds it onto itself
+        CHECK("40 is in cell 0", sent(at(40, 0, 0), "x") == 0 && sent(at(-40, 0, 0), "x") == 0 && sent(at(0, 0, 0), "x") == 0);
+        CHECK("49.99 is in cell 0, 50.01 in 100", sent(at(49.99, 0, 0), "x") == 0 && sent(at(50.01, 0, 0), "x") == 100);
+        CHECK("a half goes away from zero: 50 is 100, -50 is -100", sent(at(50, 0, 0), "x") == 100 && sent(at(-50, 0, 0), "x") == -100);
+        CHECK("150 is 200, -150 is -200, 149.99 is 100", sent(at(150, 0, 0), "x") == 200 && sent(at(-150, 0, 0), "x") == -200 &&
+                                                              sent(at(149.99, 0, 0), "x") == 100);
+        CHECK("every axis", sent(at(60, -140, 260), "x") == 100 && sent(at(60, -140, 260), "y") == -100 && sent(at(60, -140, 260), "z") == 300);
+        CHECK("never a negative zero", pr::sample_json(at(-0.4, -0.0, -49)).find("-0") == std::string::npos);
+        CHECK("a cell sent is its own cell", sent(at(sent(at(-123.5, 0, 0), "x"), 0, 0), "x") == -100 && sent(at(0, 0, 0), "x") == 0);
+        for (double v = -2000; v <= 2000; v += 12.5)   // (every multiple of 12.5: the cells' middles, their ties and their edges among them)
+            CHECK("every cell sent is a multiple of 100 and the nearest", sent(at(v, 0, 0), "x") == nearest_100(v));
+
+        // the angles: the middle of the bin, and never out of the relay's range (|yaw| <= pi, |pitch| <= pi/2: one sample past
+        // it and the relay refuses the whole summary, which the sender then deletes). Yaw pi is the relay's first bin again
+        // (it wraps the angle round), and the middle of the last pitch bin (above 60 degrees) takes straight up too
+        const double pi = 3.14159265358979323846;
+        CHECK("yaw 0 is in the bin from 0", std::fabs(sent(at(0, 0, 0, 0.1), "yaw") - 0.393) < 1e-9 && std::fabs(sent(at(0, 0, 0, -0.1), "yaw") + 0.393) < 1e-9);
+        CHECK("yaw edges", std::fabs(sent(at(0, 0, 0, pi / 4 - 1e-4), "yaw") - 0.393) < 1e-9 && std::fabs(sent(at(0, 0, 0, pi / 4), "yaw") - 1.178) < 1e-9);
+        CHECK("yaw pi is the first bin: -7/8 pi", std::fabs(sent(at(0, 0, 0, pi), "yaw") + 2.749) < 1e-9 && std::fabs(sent(at(0, 0, 0, -pi), "yaw") + 2.749) < 1e-9);
+        CHECK("yaw just under pi is the last bin: 7/8 pi", std::fabs(sent(at(0, 0, 0, pi - 1e-4), "yaw") - 2.749) < 1e-9);
+        CHECK("pitch 0 is in the bin from 0", std::fabs(sent(at(0, 0, 0, 0, 0.1), "pitch") - 0.262) < 1e-9 && std::fabs(sent(at(0, 0, 0, 0, -0.1), "pitch") + 0.262) < 1e-9);
+        CHECK("pitch up to straight up is the last bin", std::fabs(sent(at(0, 0, 0, 0, pi / 2), "pitch") - 1.309) < 1e-9 &&
+                                                              std::fabs(sent(at(0, 0, 0, 0, 1.2), "pitch") - 1.309) < 1e-9);
+        CHECK("pitch straight down is the first bin", std::fabs(sent(at(0, 0, 0, 0, -pi / 2), "pitch") + 1.309) < 1e-9);
+        for (int i = 0; i <= 3600; i++) {
+            const double yaw = -pi + i * (2 * pi / 3600), pitch = -pi / 2 + i * (pi / 3600);
+            CHECK("every yaw sent is in the relay's range", std::fabs(sent(at(0, 0, 0, yaw, pitch), "yaw")) <= pi);
+            CHECK("every pitch sent is in the relay's range", std::fabs(sent(at(0, 0, 0, yaw, pitch), "pitch")) <= pi / 2);
+        }
 
         std::vector<pr::PositionSample> five_minutes(pr::kPeriodDefault, samples[0]);
         const std::string batch = pr::summary_json(mc, true, 312.5, "Kokiri Forest (child)", &mem, maps, five_minutes);
@@ -130,22 +276,13 @@ int main() {
         // the biggest summary there can be: 16 maps with long names and every count set, and a sample each second of the
         // longest period, with the numbers play gives (positions and times with decimals, large counts). The sender
         // refuses one over its MAX_BODY, and a refused summary is deleted, its map totals with it
-        std::map<std::string, pr::MapTotals> full;
         std::vector<std::string> names;
         for (int k = 0; k < pr::kMaxMaps; k++) {
             char name[96];
             snprintf(name, sizeof name, "Dungeon_%02d_LowerFloor_BossRoom_Main (adult) \xc3\xa9", k);   // ("é": escaped by the sender)
             names.push_back(name);
-            auto& t = full[name];
-            t.fresh = k % 2, t.seconds = 52.517 + k;
-            for (auto& v : t.frame) v = 123456;
-            for (auto& v : t.gpu) v = 123456;
-            for (auto& v : t.hitch) v = 12345;
-            for (auto& v : t.event) v = 1234;
-            for (auto& v : t.part) v = 123456.789;
-            t.frame_sum = t.gpu_sum = 987654.321, t.pacing_misses = t.left_out = 123456;
-            t.movie_shown = t.movie_dropped = t.movie_late = t.movie_fallbacks = 12345, t.movie_decode_ms = 12345.678;
         }
+        const auto full = every_count_set(names);
         std::vector<pr::PositionSample> longest;
         for (int i = 0; i < pr::kPeriodMax; i++)
             longest.push_back({names[i % names.size()], -12345.678 + i * 7.123, 1234.567, 9876.543 - i, -3.14159 + i * 0.007,
@@ -158,8 +295,8 @@ int main() {
         const size_t kept = sample_count(big);
         CHECK("the samples thinned, not dropped", kept > 100 && kept < (size_t)pr::kPeriodMax);
         CHECK("an even spread, from the period's first second", big.find("\"samples\":[{\"map\":" + pr::json_text(names[0]) +
-                                                                          ",\"x\":-12350,") != std::string::npos);
-        CHECK("a spread over the whole period", big.find("\"x\":" + pr::json_signed_num(pr::bin_middle(-12345.678 + 800 * 7.123, pr::kCell)) + ",") !=
+                                                                          ",\"x\":-12300,") != std::string::npos);
+        CHECK("a spread over the whole period", big.find("\"x\":" + pr::json_signed_num(nearest_100(-12345.678 + 800 * 7.123)) + ",") !=
                                                      std::string::npos);
         CHECK("closed when thinned", big.substr(big.size() - 2) == "]}" &&
                                          std::count(big.begin(), big.end(), '{') == std::count(big.begin(), big.end(), '}'));

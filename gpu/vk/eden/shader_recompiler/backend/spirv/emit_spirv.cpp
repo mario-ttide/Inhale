@@ -169,6 +169,13 @@ void Traverse(EmitContext& ctx, IR::Program& program) {
                     ctx.OpAtomicIAdd(ctx.U32[1], counter, ctx.Const(static_cast<u32>(spv::Scope::Device)), ctx.u32_zero_value,
                                      ctx.Const(1U));
                 }
+                if (ctx.wmma16_fused.active) {
+                    if (ctx.wmma16_fused.skip_insts.contains(&inst)) continue;
+                    if (inst.GetOpcode() == IR::Opcode::MatrixMulAddF16) {
+                        EmitMatrixMulAddF16Fused(ctx, &inst);
+                        continue;
+                    }
+                }
                 EmitInst(ctx, &inst);
             }
             break;
@@ -176,6 +183,8 @@ void Traverse(EmitContext& ctx, IR::Program& program) {
         case IR::AbstractSyntaxNode::Type::If: {
             const Id if_label{node.data.if_node.body->Definition<Id>()};
             const Id endif_label{node.data.if_node.merge->Definition<Id>()};
+            // (longshot: the shared warp's region, said before the merge instruction, which must stand right before its branch)
+            WarpOpenRegion(ctx, node.data.if_node.body, ctx.Def(node.data.if_node.cond));
             ctx.OpSelectionMerge(endif_label, spv::SelectionControlMask::MaskNone);
             ctx.OpBranchConditional(ctx.Def(node.data.if_node.cond), if_label, endif_label);
             break;
@@ -196,6 +205,7 @@ void Traverse(EmitContext& ctx, IR::Program& program) {
             break;
         }
         case IR::AbstractSyntaxNode::Type::EndIf:
+            WarpCloseRegion(ctx);
             if (current_block) {
                 ctx.OpBranch(node.data.end_if.merge->Definition<Id>());
             }
@@ -509,9 +519,11 @@ void SetupCapabilities(const Profile& profile, const Info& info, EmitContext& ct
         ctx.AddExtension("SPV_KHR_shader_draw_parameters");
         ctx.AddCapability(spv::Capability::DrawParameters);
     }
+    // (longshot: not for a stage on the shared warp, which has no subgroup instruction; its check keeps them)
+    const bool subgroup_free{ctx.warp_shared && !ctx.warp_shared_check};
     if ((info.uses_subgroup_vote || info.uses_subgroup_invocation_id ||
          info.uses_subgroup_shuffles || info.uses_subgroup_mask) &&
-        profile.support_vote && profile.SupportsSubgroupStage(ctx.stage)) {
+        profile.support_vote && profile.SupportsSubgroupStage(ctx.stage) && !subgroup_free) {
         ctx.AddCapability(spv::Capability::GroupNonUniformBallot);
         ctx.AddCapability(spv::Capability::GroupNonUniformShuffle);
         if (info.uses_subgroup_shuffles && profile.support_shuffle_relative) {
@@ -684,6 +696,12 @@ void PatchMeshInstructions(std::vector<u32>& code, const EmitContext& ctx) {
 std::vector<u32> EmitSPIRV(const Profile& profile, const RuntimeInfo& runtime_info, IR::Program& program, Bindings& bindings) {
     EmitContext ctx{profile, runtime_info, program, bindings};
     if (program.info.uses_cooperative_matrix && mma_software) DefineSoftwareMatrixFunction(ctx);
+    if (program.info.uses_cooperative_matrix && !mma_software && mma_wmma16) {
+        if (!DefineWmma16MatrixFunction(ctx, program))
+            DefineSoftwareMatrixFunction(ctx);   // (the tiles do not fit the shared memory)
+        else if (mma_wmma16_fused)
+            DefineWmma16PairFunction(ctx, program);
+    }
     Id main{};
     if (runtime_info.mesh_fallback_vertex) {   // (longshot: the fallback's generated vertex stage, which reads the records)
         const Id void_function{ctx.TypeFunction(ctx.void_id)};

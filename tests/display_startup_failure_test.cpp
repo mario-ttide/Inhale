@@ -114,6 +114,7 @@ static void hos_options_choose(int, char**) {}   // (host/options_path.c: the se
 static void driver_cache_room() {}   // (host/hos_main.c: the drivers' shader caches' size, #2033)
 static void driver_cache_folder() {}   // (host/hos_main.c: the folder __GL_SHADER_DISK_CACHE_PATH names, made)
 static void driver_env_choose() {}   // (host/hos_main.c: RADV_FORCE_VRS_CONFIG_FILE dropped)
+static void hos_profiling_env() {}   // (host/profiling.c: HOS_PROFILE=1's switches)
 void hos_relaunch_keep_env() {}   // (host/hos_relaunch.c: whether the game was given a stderr, for a restart)
 
 #include "display_startup_actual.inc"

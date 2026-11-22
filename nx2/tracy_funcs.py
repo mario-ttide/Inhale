@@ -1,4 +1,4 @@
-"""INHALE_TRACY's zones in the lifted game code (docs/development/tracy.md, The game's own code): a list of lifted
+"""INHALE_TRACY's zones in the lifted game code (docs/dev/reference/profiling.md, The game's own functions): a list of lifted
 functions that become Tracy zones without translating the game again and without compiling its code again.
 
 The list: nx2/tracy_funcs.txt, and after it the file INHALE_TRACY_FUNCS names (a list made on this PC from a profile: it is

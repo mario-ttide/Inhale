@@ -113,6 +113,20 @@ static int rx_nvn_wait(uint64_t fence, uint64_t timeout) {
 static void rx_nvn_finish(void) {}
 static const nvn_tex *win_tex(const nvn_win *o, int i) { static nvn_tex t; (void)o; (void)i; return &t; }
 static void rx_nvn_present(const nvn_tex *t, const int crop[4]) { (void)t; (void)crop; note("P"); latest++; }   /* (a present takes a number too) */
+/* (upstream's live output preview, which nvnQueuePresentTexture reads: off, as it is until a preview is staged) */
+typedef struct { nvn_win window; } detached_window;
+static int detached_idle_enabled;
+static uint64_t detached_published_generation, detached_boot_addr;
+static void *detached_received_queue;
+static unsigned detached_received_instance;
+uint64_t detached_last_present_window, detached_last_present_generation;   /* (not static: set and not read here) */
+void *detached_last_present_queue;
+unsigned detached_last_present_instance;
+#define GP(a) ((void *)(uintptr_t)(a))
+static uint64_t h2g(const void *p) { return (uint64_t)(uintptr_t)p; }
+static void rx_nvn_present_trial(const nvn_tex *t, const int crop[4], uint64_t generation) {
+    (void)t; (void)crop; (void)generation; printf("FAIL: a preview's present with no preview staged\n"); exit(1);
+}
 
 /* ---- the rest of the host ---- */
 int hos_vcore_away(void) { const int had = has_core && core; core = 0; return had; }
@@ -124,7 +138,10 @@ static void hos_vi_native_presented(const int64_t phases[4]) { (void)phases; }
 static int64_t hos_now_ns(void) { return 0; }
 static void wait_note(int kind, int64_t t0) { (void)kind; (void)t0; }
 static int sync_log(void) { return 0; }
-static int env_on(const char *name) { (void)name; return 0; }
+static int env_on(const char *name) {   /* (the "1" and "0" of the runs below: upstream's HOS_NVN_HOLD reads it now) */
+    const char *v = getenv(name);
+    return v && *v && strcmp(v, "0") != 0;
+}
 void hos_log(const char *fmt, ...) { (void)fmt; }
 static void die(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vprintf(fmt, ap); va_end(ap); exit(91); }
 static void check_handle(uint64_t h) { (void)h; }

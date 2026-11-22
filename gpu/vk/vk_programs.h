@@ -102,11 +102,17 @@ struct ProgramCensus {
     std::atomic<int64_t> load_unlisted{0};      // (graphics programs loaded that no note names: no pipeline is known for them)
     std::atomic<int64_t> load_ns{0}, load_bytes{0};
     std::atomic<int64_t> pipes_taken{0};        // (pipelines made at create that a draw then took)
+    std::atomic<int64_t> load_modules_dropped{0};   // (modules let go once a loaded program's noted pipelines were built)
 };
 extern ProgramCensus census;
 /// One line of the census (every 600 presents with RX_VK_LOG_PROGRAM_LIFE=1, and when the window closes)
 void programs_census_log(const char* when);
 bool programs_life_on();   // (RX_VK_LOG_PROGRAM_LIFE=1)
+/// (descriptor_array_census.h) A program's stages counted in the census of indexed descriptor arrays, once each, whatever its
+/// variants: where the program cache sees it (vk_progcache.cpp: saved when translated, or read). Those near a limit are named
+void descriptor_arrays_note(const Program& p);
+/// The census of indexed descriptor arrays, by stage, kind and size (after the preparation, and when the window closes)
+void descriptor_arrays_log(const char* when);
 
 // ---- a program's first draw or dispatch (the thread replaying), for the log and the census ----
 enum class NeedProgram : uint8_t { Ready, Loaded, Translated, Failed };

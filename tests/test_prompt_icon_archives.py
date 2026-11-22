@@ -62,6 +62,9 @@ static int DeleteFileA(const char *a) { (void)a; return 0; }
 static void hos_log(const char *f, ...) { (void)f; }
 static int setup(char *dir, size_t cap, int *face) { snprintf(dir, cap, "%s/", root); *face = HOS_PROMPT_XBOX; return 1; }
 static int sizes(const char *dir, const char *mod, char *out, size_t cap) { (void)dir; (void)mod; (void)out; (void)cap; return 0; }
+/* (upstream's size table with the font's entry raised, which hos_prompts_romfs serves before the archives: none here) */
+static char opened_table[MAX_PATH];
+static int own_sizes(const char *key, char *out, size_t cap) { (void)key; (void)out; (void)cap; return 0; }
 static volatile LONG romfs_state[3];
 static LONG InterlockedCompareExchange(volatile LONG *p, LONG x, LONG c) { LONG o = *p; if (o == c) *p = x; return o; }
 static LONG InterlockedExchange(volatile LONG *p, LONG x) { LONG o = *p; *p = x; return o; }

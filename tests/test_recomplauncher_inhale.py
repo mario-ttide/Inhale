@@ -17,6 +17,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # (python -I leaves the check's own folder off the path)
 from srccut import block, between
+from menu_model_fixture import module_rows  # noqa: E402
 
 MANIFEST = ROOT / "packaging" / "recomplauncher.json"
 
@@ -30,7 +31,8 @@ def read(*parts):
 
 
 def menu_keys():
-    """{ini key: hidden for this game} for each menu row with a value (vk_menu.cpp rows, ini_key, is_oot_row)"""
+    """{ini key: hidden for this game} for each menu row with a value (vk_menu.cpp rows, ini_key, is_oot_row; and since
+    upstream's #1633 the rows its modules describe, gpu/vk/menu/*.cpp, each with its own key)"""
     menu = read("gpu", "vk", "vk_menu.cpp")
     special = dict((field, key) for field, key in
                    re.findall(r'if \(r\.value == &opts\.(\w+)\) return "([a-z_0-9]+)";',
@@ -39,6 +41,10 @@ def menu_keys():
     keys = {}
     for name, field in re.findall(r'\{TAB_[A-Z]+, "([^"]+)", &opts\.(\w+),', menu):
         keys[special.get(field, name.lower().replace(" ", "_"))] = field in hidden
+    for row in module_rows():
+        field = re.fullmatch(r"&opts\.(\w+)", row.get("value", ""))
+        if field and "key" in row:
+            keys[row["key"].strip('"')] = field.group(1) in hidden
     return keys
 
 

@@ -147,8 +147,8 @@ struct MapTotals {
     }
 };
 
-/// One second of performance at a map position and gameplay camera angle (exact here: summary_json sends the middle of
-/// its cell and of its angles' bins, never the exact place)
+/// One second of performance at a map position and gameplay camera angle (exact here: summary_json sends the cell the
+/// place is in and the middle of its angles' bins, never the exact place)
 struct PositionSample {
     std::string map;
     double x = 0, y = 0, z = 0, yaw = 0, pitch = 0;
@@ -213,10 +213,24 @@ inline std::string json_signed_num(double v) {
 
 inline std::string json_num(double v) { return json_signed_num(std::max(v, 0.0)); }
 
-/// The sample's place as sent: the middle of its 100-unit cell, and of its 45-degree yaw and 30-degree pitch bins (the
-/// relay's, floor(value / size)), so the exact position and view never leave the PC and the relay bins them as before
-constexpr double kCell = 100, kYawBin = 3.14159265358979323846 / 4, kPitchBin = 3.14159265358979323846 / 6;
-inline double bin_middle(double v, double size) { return (std::floor(v / size) + 0.5) * size; }
+/// What is sent of a sample's place and view, so the exact position and view never leave the PC and the relay files the sample
+/// where it would have filed the exact one. It files a place under the nearest multiple of 100 on each axis (Inhale-api's
+/// telemetry/perf, totals.go: math.Round(v / 100) * 100, a half going away from zero), so that is what is sent: the relay
+/// rounds it onto itself. Not the middle of the 100-unit cell (50, 150, -50): those are the relay's ties, and every one
+/// would land a cell off. Its yaw bin is 45 degrees from -180 (the angle wrapped round) and its pitch bin 30 degrees from
+/// -90, so the angles are sent as the middles of their bins, which are inside its range (|yaw| <= pi, |pitch| <= pi/2: one
+/// sample out of it and it refuses the whole summary, and the sender deletes that). Yaw pi is the first bin again, as the
+/// relay wraps it; the last pitch bin takes straight up, the one angle the relay gives a bin of its own, whose middle
+/// would be out of range
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kCell = 100, kYawBin = kPi / 4, kPitchBin = kPi / 6;
+/// (+ 0.0: a cell of -0 would be sent as "-0")
+inline double cell_of(double v) { return std::round(v / kCell) * kCell + 0.0; }
+inline double yaw_bin_middle(double yaw) {
+    const double bin = std::floor(yaw / kYawBin);
+    return (bin - 8 * std::floor((bin + 4) / 8) + 0.5) * kYawBin;   // (the bins -4 to 3: past pi, round to the first)
+}
+inline double pitch_bin_middle(double pitch) { return (std::clamp(std::floor(pitch / kPitchBin), -3.0, 2.0) + 0.5) * kPitchBin; }
 
 /// A summary's size once the sender has re-encoded it: Python's json.dumps writes each non-ASCII character as \u escapes,
 /// up to three bytes for each of its UTF-8 bytes ("é", 2 bytes, is 6; a 4-byte emoji, a 12-byte surrogate pair)
@@ -235,10 +249,9 @@ std::string json_list(const T (&v)[N]) {
 }
 
 inline std::string sample_json(const PositionSample& s) {
-    return "{\"map\":" + json_text(s.map) + ",\"x\":" + json_signed_num(bin_middle(s.x, kCell)) +
-           ",\"y\":" + json_signed_num(bin_middle(s.y, kCell)) + ",\"z\":" + json_signed_num(bin_middle(s.z, kCell)) +
-           ",\"yaw\":" + json_signed_num(bin_middle(s.yaw, kYawBin)) +
-           ",\"pitch\":" + json_signed_num(bin_middle(s.pitch, kPitchBin)) + ",\"frames\":" + std::to_string(s.frames) +
+    return "{\"map\":" + json_text(s.map) + ",\"x\":" + json_signed_num(cell_of(s.x)) + ",\"y\":" + json_signed_num(cell_of(s.y)) +
+           ",\"z\":" + json_signed_num(cell_of(s.z)) + ",\"yaw\":" + json_signed_num(yaw_bin_middle(s.yaw)) +
+           ",\"pitch\":" + json_signed_num(pitch_bin_middle(s.pitch)) + ",\"frames\":" + std::to_string(s.frames) +
            ",\"frame_ms\":" + json_num(s.frame_ms) + ",\"gpu_frames\":" + std::to_string(s.gpu_frames) +
            ",\"gpu_ms\":" + json_num(s.gpu_ms) + ",\"hitches\":" + std::to_string(s.hitches) + "}";
 }
@@ -388,7 +401,7 @@ inline int http_status(const std::string& headers) {
 }
 
 /// What the relay's answer means for a summary waiting in perf_pending/. Only a definite refusal (the relay says this
-/// summary will never do) drops it: a 404 during a deploy, a redirect, 408 or 425 keep it for next time (issue 1265)
+/// summary will never do) drops it: a 404 during a deploy, a redirect, 408 or 425 keep it for next time
 enum class SendResult { None, Sent, Busy, Refused };
 inline SendResult send_result(int http) {
     if (http >= 200 && http < 300) return SendResult::Sent;

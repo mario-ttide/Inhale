@@ -54,7 +54,6 @@ bool holds = false;
 bool dlss_fg_holds() { return holds; }
 uint64_t antilag_frame() { return 0; }   // (vk_antilag.cpp: AMD Anti-Lag 2 not on here)
 // (vk_framegen.cpp hud_source: FSR 3.1's source with the HUD marked; no picture copied here, the frame as it is)
-// (inhale) the pq argument hud_source has upstream since v3.0.0; upstream's stub still lacks it
 bool hud_source(VkCommandBuffer, int, uint32_t, uint32_t, int, int, uint32_t, uint32_t, bool) { return false; }
 int fsr_calls = 0, fsr_result = 1;
 bool last_native_pq = false;

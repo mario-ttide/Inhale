@@ -55,9 +55,15 @@ def main():
                          "// Wait for translation before reading its stages.")
     assert "if (!opts.dof && kirby_post::is_dof(cp->key, [&] { return program_code_keys(s); })) return;" in after_skip, \
         "vk_draw.cpp: the Depth of field row's skip is not after RX_VK_SKIP_CODE's block"
-    # (vk_menu.cpp: the row, On by default (vk_menu.h), hidden only for the other game)
+    # (the row, a module's (gpu/vk/menu/kirby_dof.cpp): an On/Off toggle in the Detail section, On by default (vk_menu.h);
+    # vk_menu.cpp hides it only for the other game)
+    module = (ROOT / "gpu/vk/menu/kirby_dof.cpp").read_text(encoding="utf-8")
+    row = between(module, '.key = "depth_of_field",', "},")
+    for field in ('.label = "Depth of field",', ".kind = menu::Kind::Toggle,", ".value = &opts.dof,", ".lo = 0, .hi = 1,"):
+        assert field in row, "kirby_dof.cpp: the row lost %s" % field
+    assert '.section("detail")' in module and 'menu::before("shadow_resolution")' in module, \
+        "kirby_dof.cpp: the row is not in the Detail section before Shadow resolution"
     menu = (ROOT / "gpu/vk/vk_menu.cpp").read_text(encoding="utf-8")
-    assert '{TAB_GRAPHICS, "Depth of field", &opts.dof, 0, 1, 1, tx_onoff,' in menu
     assert "int dof = 1;" in (ROOT / "gpu/vk/vk_menu.h").read_text(encoding="utf-8")
     assert "bool kirby_row(const Row& r) { return r.value == &opts.dof; }" in menu
     shown = block(menu, "bool row_shown(int i) {")

@@ -24,6 +24,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # (python -I leaves this folder off the path)
 import test_menu_i18n as base  # noqa: E402
 from srccut import block  # noqa: E402
+from menu_model_fixture import menu_sources  # noqa: E402
 
 RUN_ALL_ARGS = ["--cxx", "{cxx}"]
 
@@ -86,7 +87,12 @@ def main():
     args = p.parse_args()
     src = (VK / "menu_i18n_inhale.h").read_text(encoding="utf-8")
     theirs, their_langs = base.tables()
-    menu = set(base.c_strings((VK / "vk_menu.cpp").read_text(encoding="utf-8")))
+    menu = set(base.c_strings(menu_sources()))   # (vk_menu.cpp's texts and its modules', gpu/vk/menu/: upstream #1633)
+    menu |= set(base.c_strings((VK / "vk_ui.h").read_text(encoding="utf-8")))   # (the prompt bar's key names: "Del")
+    runtime = set()   # (and the ReShade status texts the renderer hands the menu, as test_menu_i18n.py takes them)
+    for name in ("fx_runtime.cpp", "fx_preset.cpp"):
+        runtime.update(base.c_strings((VK / "reshade" / name).read_text(encoding="utf-8")))
+    menu.update(text for text in base.RESHADE_STATUS if text in runtime)
     retired = base.c_strings(re.search(r'kRetired\[\] = \{\n(.*?)\n\};', src, re.S).group(1))
     own = {}
     for name, body in TABLE.findall(src):

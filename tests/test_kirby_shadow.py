@@ -130,12 +130,14 @@ def check_source():
     kirby_row = between(oot_game, "else if (r.value == &opts.shadow_res)", ";")
     assert "r.help = kShadowHelpKirby, r.hint = hn_shadow_res_kirby" in kirby_row, \
         "menu_option_set: the Shadow resolution row does not take this game's help and hints"
-    help_kirby = between(menu, "const char* const kShadowHelpKirby =", "MENU_HINTS(hn_shadow_res_kirby, 0,")
+    help_kirby = between(menu, "const char* const kShadowHelpKirby =", "MODULE_HINTS(hn_shadow_res_kirby, 0,")
     # (the row takes a restart in this game only, compared by the size drawn, its start value the one the read applied)
     assert "r.restart = true" in kirby_row, \
         "menu_option_set: the Shadow resolution row does not take a restart in this game"
-    row = between(menu, '{TAB_GRAPHICS, "Shadow resolution", &opts.shadow_res,', "},")
-    assert row.rstrip().endswith("hn_shadow_res"), "the row table's Shadow resolution must stay live (the other game's)"
+    # (the row is upstream's Detail module's since #1633: gpu/vk/menu/detail.cpp)
+    detail = (ROOT / "gpu/vk/menu/detail.cpp").read_text(encoding="utf-8")
+    row = between(detail, '.key = "shadow_resolution",', "})")
+    assert row.rstrip().endswith(".hint = hn_shadow_res"), "the module's Shadow resolution must stay live (the other game's)"
     assert "if (int v; inhale_restart_value(r, &v)) return v;" in block(menu, "int row_restart_value("), \
         "row_restart_value: no longer asks inhale_restart_value"
     value = block(menu, "bool inhale_restart_value(")
@@ -144,7 +146,7 @@ def check_source():
     told = block(menu, "if (id == HOS_OPT_SHADOW_RES) {")
     assert "std::lock_guard lk(menu_mu);" in told and "restart_state.restart_value(" in told, told
     assert "Applies after a restart." in help_kirby and "sun" not in help_kirby, help_kirby
-    hints = between(menu, "MENU_HINTS(hn_shadow_res_kirby, 0,", "const char* const kLaptopHelpPlain =")
+    hints = between(menu, "MODULE_HINTS(hn_shadow_res_kirby, 0,", "const char* const kLaptopHelpPlain =")
     for size in [1400] + sizes:
         mb = round(size * size * 6 / 1e6)   # (D16 depth + two R16 blur targets, as the pass trace shows them)
         assert "%d pixels a side" % size in hints and "About %d MB" % mb in hints, (size, mb, hints)

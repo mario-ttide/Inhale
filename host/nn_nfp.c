@@ -14,6 +14,9 @@
  *
  * Nothing of a dump leaves the PC, and none is in the repository. */
 #include "hos.h"
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 #include "hos_paths.h"
 
 #include <ctype.h>
@@ -525,7 +528,7 @@ const char *hos_nfc_scan_name(void) { return ""; }
 /* ---- nn::nfp ------------------------------------------------------------------------------------------------------------------ */
 static int traced(void) {
     static int on = -1;
-    if (on < 0) on = getenv("HOS_NFP_TRACE") != NULL && atoi(getenv("HOS_NFP_TRACE")) != 0;
+    if (on < 0) on = env_on("HOS_NFP_TRACE");
     return on;
 }
 #define NFP_TRACE(...) do { if (traced()) hos_log(__VA_ARGS__); } while (0)
@@ -534,7 +537,7 @@ HLE(_ZN2nn3nfp10InitializeEv) {
     AcquireSRWLockExclusive(&nfc_lk);
     nfp_ready = 1, dev_state = ST_INIT;
     /* (HOS_NFP_SEARCH=1, a test's: the reader looks for a tag from the start, without the game's NFC screen) */
-    if (getenv("HOS_NFP_SEARCH") && atoi(getenv("HOS_NFP_SEARCH"))) dev_state = ST_SEARCHING;
+    if (env_on("HOS_NFP_SEARCH")) dev_state = ST_SEARCHING;
     ReleaseSRWLockExclusive(&nfc_lk);
     reader_start();
     hos_log("nfp: the game uses NFC tags: the Insert menu's NFC tab holds one of %s's to the reader", hos_nfc_dir());
@@ -618,6 +621,9 @@ HLE(_ZN2nn3nfp12GetModelInfoEPNS0_9ModelInfoERKNS0_12DeviceHandleE) {
         uint8_t *m = GP(ARG(0));
         memset(m, 0, 0x40);
         memcpy(m, tag + 0x54, 7);
+        /* The tag stores the model number big endian; ModelInfo returns a native u16. */
+        m[4] = tag[0x59];
+        m[5] = tag[0x58];
     }
     ReleaseSRWLockShared(&nfc_lk);
     RET(ok ? 0 : NFP_WRONG_STATE);

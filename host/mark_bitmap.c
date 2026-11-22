@@ -8,6 +8,9 @@
    16 MB of zeroed static data for the 512 GB window, only the heap's part ever touched (~210 KB). HOS_MARK_BITMAP_ALL=1 sets
    every bit at the start: every store marks, as without the bitmap, plus the test's cost (the control of an A/B). */
 #include "hos.h"
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,8 +20,7 @@
 uint8_t a64_gpu_pages[A64_DIRTY_PAGES / 8];
 
 __attribute__((constructor)) static void gpu_pages_all(void) {
-    const char *e = getenv("HOS_MARK_BITMAP_ALL");
-    if (e && atoi(e)) memset(a64_gpu_pages, 0xff, sizeof a64_gpu_pages);
+    if (env_on("HOS_MARK_BITMAP_ALL")) memset(a64_gpu_pages, 0xff, sizeof a64_gpu_pages);
 }
 
 void hos_gpu_pages_set(uint64_t guest, uint64_t size) {

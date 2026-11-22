@@ -700,7 +700,7 @@ build without `RX_PGO` / `RX_VK_PGO` compiles without the profiles again.
 - Sampling: `HOS_SAMPLE_ALL=<file> HOS_PROFILE=5`, no call tracing, the S5 walk script; `<file>.go` must be made
   after the stage has started (second 20): made before the start, only `MainThread` is ever sampled (41983 lines of
   one thread; the sampler takes its thread list when it first sees the file).
-- `scripts/hotlist.py work/runs/s6/hot2/all.txt <out> 0.95`: 10414 samples of game threads in 725 lifted functions;
+- `scripts/hotlist.py work/runs/s6/hot2/all.txt <out> 0.95` (since v3.1.1 `scripts/perf.py hotlist <samples> <out> --share 0.95`): 10414 samples of game threads in 725 lifted functions;
   301 functions cover 95% (79 cover 85%). First: `f_807eff00`, the bytecode interpreter of S5's profile. Two faults
   of the tool fixed on the way: on Linux it took the module from the empty entry the linker map gives the `.exe`
   name (0 samples counted), and it appended the other game's decoder functions to every list (now only where the
@@ -1698,7 +1698,20 @@ the work just before the present was B, which is short, and the GPU was mostly i
 waiter)"), inside its recorder's rewrite (#1763, #1866), which a sync brings. With the gate off (`RX_VK_FRAME_GATE=0`)
 every boot stalled twice, with the fix and without it (`v4gate0*-*.txt`). Once in the stage, none of the runs stalled.
 
-The fix (`gpu/vk/flush_owed_inhale.h`, and the lines of `gpu/vk/vk_replay.cpp` marked `(inhale)` that call it) does
+Removed at the sync to v3.1.1 (2026-11-22), which brings upstream's `rec::take_flush_owed` (#1866), and put back the same
+day: upstream's covers only a wait for parts already handed over to the recorder. Every 70 s headless walk then stalled
+4-6 times (`vk: wait for fence N (done N-1, pushed N+2): 2`, `1 polls timed out (10334 ms)`: a wait with a 10 s timeout,
+counted with the polls as one that timed out), none with `RX_VK_BATCH=0`. A temporary log of the wait's state (once
+before its driver wait, then every 0.5 s) showed the order each time: at the wait, f's submit job was still in the
+render thread's queue (`pushed` f-1, 2 to 16 jobs queued, nothing held, every part handed over submitted, so
+`settle_parts` was met and nothing owed); 0.5 s later the render thread had replayed it and gone idle, 3-6 command
+buffers held with `pend.signal` past f, the GPU idle (`batch_tl` at `batch_flushed`), nothing owed. The held part had
+come through the recorder's `part_submit`, so putting the stand-in back with its old four lines (the submit's in
+`submit_recording` only) did not help (6 stalls). It is back with a fifth line, the same `due` in `part_submit`'s batch
+branch, and the owe in `wait_inner` (the wait's body since upstream's `wait` became the timeline line's wrapper):
+0 stalls in 3 walks, 60 fps in play. The stand-in's own record follows.
+
+The fix (`gpu/vk/flush_owed_inhale.h`, and the lines of `gpu/vk/vk_replay.cpp` marked `(inhale)` that called it) did
 what upstream's does, keyed on fence values instead of its recorder's parts: a wait with a timeout (not a poll, which
 comes many times a frame) owes its value before its own send, and the submit that holds that value sends the batch at
 once (`FR_WAIT`). A seq_cst fence on each side (the waiter's after it owes, the submitter's after it raises
@@ -1720,7 +1733,8 @@ Checked:
 - `tests/test_flush_owed.py` compiles a model of the held submits, the two sends and the submit with the header, and
   makes the cases: the stall's order, the other order, a poll, two waiters, a signal past the owed value, a send below
   it, a wait for what is already sent, and a waiter and a submitter racing on two threads 100,000 times. It reads the
-  lines' places in `vk_replay.cpp`. Before the fix it fails on the four places. Each of these breaks it: the
+  lines' places in `vk_replay.cpp` (since v3.1.1 five: the submit's in `part_submit` too). Before the fix it fails on
+  the four places. Each of these breaks it: the
   submitter's fence removed (5 to 6,500 of the 100,000 rounds left the value held), `>=` made `>` or `==`, the owed
   value never cleared, cleared by any send, owed when already sent, owed after the waiter's send, cleared by a send that
   failed. The waiter's fence removed does not break it on x86, where the CAS before it is a full barrier already. Not

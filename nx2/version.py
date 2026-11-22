@@ -18,7 +18,8 @@ import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCES = ("host", "gpu", "nx2")
-SOURCE_EXT = (".c", ".cc", ".cpp", ".h", ".hpp", ".inc", ".py", ".glsl", ".comp", ".vert", ".frag", ".spv")
+# (.inl and .def: files an #include names besides headers, gpu/vk/switches.def; as nx2/build.py's HEADER_EXTS)
+SOURCE_EXT = (".c", ".cc", ".cpp", ".h", ".hpp", ".inc", ".inl", ".def", ".py", ".glsl", ".comp", ".vert", ".frag", ".spv")
 
 
 def release(root=ROOT):
@@ -44,7 +45,7 @@ def release(root=ROOT):
 
 def long_path(p):
     """(Windows) p as an extended-length path (\\\\?\\...): a builder unpacked in a deep folder has sources past 260
-    characters (#1115: a portable launcher in Downloads), which a plain path can't open and a plain walk doesn't list.
+    characters (a portable launcher in Downloads), which a plain path can't open and a plain walk doesn't list.
     Python takes these without Windows' long-paths setting. Elsewhere, or one already: as is (nup.py's)"""
     if os.name != "nt" or not p:
         return p

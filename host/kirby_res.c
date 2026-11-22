@@ -18,6 +18,9 @@
    file as the game ships it, steps and all: it draws from another set of sizes (1920 x 1080 down), but was seen at a
    docked level's size too, so the fixed size is not given to it. The table's bytes are checked first: another version
    of the file is left as it is, and says so. */
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,8 +67,7 @@ int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, ui
 /* nn_fs.c's read, for each file read: the output size, the profile and HOS_DYNAMIC_RES asked only for the one file */
 void kirby_read_done(const char *guest, int64_t off, uint8_t *buf, uint64_t n) {
     if (!guest || !strstr(guest, "ScnCommon")) return;
-    const char *e = getenv("HOS_DYNAMIC_RES");
-    kirby_scn_patch(guest, off, buf, n, hos_output_size(0), hos_output_size(1), !hos_handheld() && !(e && atoi(e)));
+    kirby_scn_patch(guest, off, buf, n, hos_output_size(0), hos_output_size(1), !hos_handheld() && !env_on("HOS_DYNAMIC_RES"));
     void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n);   /* (the shadow map's size: kirby_shadow.c) */
     kirby_shadow_read(guest, off, buf, n);
 }

@@ -1,6 +1,6 @@
 // (inhale) A blocking wait for a fence value owes a flush of the batched submits (RX_VK_BATCH) to the submit that signals it.
 //
-// The race (vk_replay.cpp). A game's thread waiting for value f (wait) lets its submit on (gate_need_value), sends what is
+// The race (vk_replay.cpp). A game's thread waiting for value f (wait_inner) lets its submit on (gate_need_value), sends what is
 // held (queue_flush_for(FR_WAIT)) and waits on the timeline. Its send often comes before the render thread has recorded the
 // submit of f, so it sends nothing of it; the render thread then holds that submit (submit_recording's batch branch), and
 // sends a batch itself only at RX_VK_BATCH_MAX or when the GPU is idle (batch_gpu_idle). With the GPU busy on the frame's
@@ -8,10 +8,14 @@
 // "issue #6", which issue #6's order (host/kirby_queue.c) made more frequent, and which every boot with
 // RX_VK_FRAME_GATE=0 had.
 //
-// The fix stands in for upstream's (rec::take_flush_owed, ed9495bb, #1866), which is keyed on its recorder rewrite's
-// parts and cannot be taken alone. The same idea keyed on fence values: the waiter owes f before its own send, and the
-// submit that holds f sends the batch at once. Remove this file and its four lines in vk_replay.cpp at the sync that
-// brings #1866.
+// Upstream's rec::take_flush_owed (ed9495bb, #1866) covers part of it only: a wait for the parts handed over to the recorder
+// that ends unmet owes a flush to the part it waited for. A wait that comes before the render thread has replayed f's job at
+// all finds every part handed over already submitted (settle_parts met), owes nothing, and the submit of f is held after its
+// send just as before: the 4-6 stalls a 70 s walk had after the sync to v3.1.1, each `vk: wait for fence N (done N-1,
+// pushed N+2)` with f's job still in the render thread's queue at the wait and held with the GPU idle 0.5 s later
+// (docs/design.md, "The stall at the start, fixed"). So this stays beside upstream's, keyed on fence values: the waiter owes
+// f before its own send, and the submit that holds f (submit_recording's batch branch, or part_submit's on the recorder)
+// sends the batch at once. Remove it when upstream owes a flush for a value whose job is not replayed yet.
 //
 // The order. The waiter: owe (a read-modify-write of upto), a seq_cst fence, then its send looks at pend_held. The
 // submitter (dev.present_mu held): pend_held raised, a seq_cst fence, then due looks at upto. Of two seq_cst fences one

@@ -5,7 +5,8 @@ made here: no clone of Longshot, no game.
     string and in a link that opens a new report, and stays in a comment that names an issue or a pull request;
     a second pass changes nothing;
   - the marks on Longshot's changes stay, with a version before the name too, and so does the text of a file kept
-    whole (the script that holds the shader text its compiled headers are checked against);
+    whole (the script that holds the shader text its compiled headers are checked against), and a check's regular
+    expression for a mark;
   - what a sync applies: a file of the other game (oot_*) is taken like any file, new or changed, and only the
     stand-in nx2/oot_patches.py is not, nor a file Longshot removed and this fork changed; the names Longshot's
     file gained that the stand-in lacks are found.
@@ -48,6 +49,9 @@ TEXTS = [
     # the marks on Longshot's changes: they say whose change it is
     ("/* (longshot) the Longshot log */", "/* (longshot) the Inhale log */"),
     ("/* (version 26, longshot) asked by longshot_ctl */", "/* (version 26, longshot) asked by inhale_ctl */"),
+    # a check's regular expression for that mark: the check reads the mark as it stays
+    (r're.search(r"\(\*ask\)\(\);\n    /\* \(version 42, longshot\)", longshot_api)',
+     r're.search(r"\(\*ask\)\(\);\n    /\* \(version 42, longshot\)", inhale_api)'),
 ]
 
 
@@ -59,7 +63,7 @@ def main():
 
     # (a kept file: this text is compiled into a header under gpu/vk/shaders/, which is kept too)
     shader = b'"FfxBoolean LongshotSame(FfxInt32x2 iPx)\\n"'
-    assert rename_full.map_bytes("scripts/fsr3_shaders.py", shader) == shader
+    assert rename_full.map_bytes("scripts/shaders.py", shader) == shader
     assert rename_full.map_bytes("scripts/ffx_sdk.py", shader) == shader.replace(b"Longshot", b"Inhale")
 
     tracked = {"nx2/lift.py", "nx2/oot_shadow.py", "host/oot_fov.c", "nx2/oot_patches.py", "scripts/inhale_ctl.py"}

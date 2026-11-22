@@ -38,7 +38,8 @@ PROVENANCE = os.path.join(ROOT, "PROVENANCE.md")
 UPSTREAM = os.path.join(ROOT, "..", "Longshot")   # (the clone of Longshot; scripts/sync_nightly.py fetches it)
 BASE_LINE = re.compile(r"^(\s*upstream-base:\s*)([0-9a-f]{40})\s*$", re.M)
 PATHS = ["nx2", "host", "gpu", "third_party", "tests", "scripts", "LICENSE", "requirements.txt", ".gitattributes",
-         ".gitignore", "docs/compiler-memory-accounting.md"]
+         ".gitignore", "docs/dev/reference/architecture.md", "docs/dev/reference/threads.md",
+         "docs/dev/reference/build.md"]   # (the documents the code's doc: comments name: PROVENANCE.md)
 
 
 def git(where, *args, data=None, check=True):

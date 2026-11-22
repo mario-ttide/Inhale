@@ -14,11 +14,13 @@ Kept as they are:
     with their test (it has upstream's spellings as its input), everything under third_party/ (each part's tree hash
     is checked, scripts/check_third_party.py), the renderer's own shader sources and their compiled headers (a header
     names the hash of the source it was compiled from, and the name is only in their comments), the script that holds
-    the shader text upstream changed in AMD's FSR 3 passes (scripts/fsr3_shaders.py: those headers are compiled from
-    it, and its functions have the name), and the other game's item table with its test (an item of that game has
+    the shader text upstream changed in AMD's FSR 3 passes (scripts/shaders.py: those headers are compiled from
+    it, and its functions have the name) and the check that cuts those functions out of it by their names
+    (tests/test_fsr3fi_hud_mask.py), and the other game's item table with its test (an item of that game has
     the name);
   - the marks `(longshot)`, `(longshot: ...)`, `(longshot-amd)`, `(version 26, longshot)` on upstream's changes to
-    the code it took from others and to the renderer's interface: they say whose change it is, and they stay true;
+    the code it took from others and to the renderer's interface: they say whose change it is, and they stay true; and
+    such a mark escaped in a check's regular expression, so the check still finds it;
   - the two variables the vendored a64-kit reads by name;
   - upstream's repository, the issues and pull requests a comment names, and launcher issue references.
 Two spans have an answer of their own. The window's application id, which is under upstream's domain (FIXED). And
@@ -45,12 +47,13 @@ OLD, NEW = "longshot", "inhale"
 KEEP_FILES = {"PROVENANCE.md", "gpu/PROVENANCE.md", "host/PROVENANCE.md", "CREDITS.md", "README.md", "CONTRIBUTING.md",
               "AGENTS.md", "CLAUDE.md",
               "docs/design.md", "scripts/sync_upstream.py", "scripts/rename_full.py", "tests/test_sync_rules.py",
-              "scripts/fsr3_shaders.py",
+              "scripts/shaders.py", "tests/test_fsr3fi_hud_mask.py",
               "gpu/vk/oot_cheat_items.h", "tests/test_cheat_items.py"}
 KEEP_DIRS = ("third_party/", "gpu/vk/shaders/", "gpu/vk/host_shaders/", ".claude/")
 # (spans that stay, tried before the name itself at each place)
 KEEP_TEXT = [r"\(longshot(?=[):, -])",                      # the marks on upstream's changes
              r"\(version \d+, longshot\)",                  # the same on a member of the renderer's interface
+             r"\\\(version \d+, longshot\\\)",              # that mark in a check's regular expression
              r"LONGSHOT_MINGW", r"LONGSHOT_LIGHT_PASSES",   # read by third_party/a64-kit
              r"(?i:magicbeandev/longshot)",                 # upstream's repository and tracker
              r"LongshotLauncher#\d+"]                       # an issue of upstream's launcher

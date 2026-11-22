@@ -1,4 +1,4 @@
-"""(inhale) A blocking wait's fence sends the batch its submit lands in: gpu/vk/flush_owed_inhale.h and its four lines in
+"""(inhale) A blocking wait's fence sends the batch its submit lands in: gpu/vk/flush_owed_inhale.h and its five lines in
 gpu/vk/vk_replay.cpp.
 
     python -I -B tests/test_flush_owed.py [--cxx clang++]
@@ -7,13 +7,16 @@ For MSVC use --cxx cl in a configured developer prompt. No game or GPU.
 
 The stall it checks against (docs/design.md section 9, "issue #6"): with batched submits (RX_VK_BATCH), a game's thread
 waiting for fence value f sent what was held before the render thread had held the submit of f, and that submit then
-stayed held, with the GPU busy, until the wait gave up after 10 s.
+stayed held, with the GPU busy, until the wait gave up after 10 s. Upstream's rec::take_flush_owed (#1866) does not cover
+it: the wait came before the render thread had replayed f's job, so no part of it was handed over to be owed (the 4-6
+stalls a walk after the sync to v3.1.1).
 
 A model compiled with the real header: a stand-in for the held submits (pend), the replay's send (queue_flush_locked) and
 the waiter's (queue_flush_for), a submit that holds and then asks whether a waiter is owed, and the GPU always busy (no
 send because it is idle). The bug's order, the other order, a poll, two waiters, a wait for what is already sent, and a
 waiter and a submitter on two threads racing 100,000 times: every owed value is sent by the end of its round, and a
-submit no waiter owes stays held. Then the text of vk_replay.cpp: the four lines where the model puts them.
+submit no waiter owes stays held. Then the text of vk_replay.cpp: the five lines where the model puts them (the submit's
+in both places that hold one: submit_recording and the recorder's part_submit).
 
 Not modelled: the real wait's later sends and its driver wait, the frame gate, RX_VK_BATCH_MAX, the GPU idle send, the
 recordings' timeline (wait_recorded), timing.
@@ -192,7 +195,7 @@ def text_checks(src):
     if '#include "flush_owed_inhale.h"' not in src:
         problems.append('no #include "flush_owed_inhale.h"')
 
-    wait = block(src, "int wait(uint64_t f, uint64_t timeout_ns) {", "gpu/vk/vk_replay.cpp")
+    wait = block(src, "int wait_inner(uint64_t f, uint64_t timeout_ns) {", "gpu/vk/vk_replay.cpp")
     owe = wait.find("flush_owed.owe(f")
     if owe < 0:
         problems.append("wait() owes nothing (flush_owed.owe(f, ...)) before its send")
@@ -202,26 +205,28 @@ def text_checks(src):
             problems.append("wait() owes for a poll too (not under if (timeout_ns)): %s" % line.strip())
         if "timeline_sent" not in line:
             problems.append("wait() owes what is already sent (no timeline_sent): %s" % line.strip())
-        if owe > find(wait, "queue_flush_for(FR_WAIT)", "wait() in gpu/vk/vk_replay.cpp", unique=False):
+        if owe > find(wait, "queue_flush_for(FR_WAIT", "wait_inner() in gpu/vk/vk_replay.cpp", unique=False):
             problems.append("wait() owes after its first send: a submit held between the two is not sent")
 
-    submit = block(src, "void submit_recording(Recording& r", "gpu/vk/vk_replay.cpp")
-    held = find(submit, "pend_held.store(true", "submit_recording in gpu/vk/vk_replay.cpp")
-    signal = find(submit, "pend.signal = std::max(", "submit_recording in gpu/vk/vk_replay.cpp")
-    ret = submit.find("return;", held)
-    due = submit.find("flush_owed.due(pend.signal)")
-    if due < 0:
-        problems.append("submit_recording's batch branch does not ask flush_owed.due(pend.signal)")
-    else:
+    for name, start, end in (("submit_recording", "void submit_recording(Recording& r", "return;"),
+                             ("part_submit", "void part_submit(const PartSubmit& s) {", "} else {")):
+        submit = block(src, start, "gpu/vk/vk_replay.cpp")
+        held = find(submit, "pend_held.store(true", name + " in gpu/vk/vk_replay.cpp")
+        signal = find(submit, "pend.signal = std::max(", name + " in gpu/vk/vk_replay.cpp")
+        ret = submit.find(end, held)
+        due = submit.find("flush_owed.due(pend.signal)")
+        if due < 0:
+            problems.append("%s's batch branch does not ask flush_owed.due(pend.signal)" % name)
+            continue
         line = submit[submit.rfind("\n", 0, due) + 1:submit.find("\n", due)]
         if "queue_flush_locked()" not in line:
-            problems.append("submit_recording asks due and sends nothing: %s" % line.strip())
+            problems.append("%s asks due and sends nothing: %s" % (name, line.strip()))
         if not held < due:
-            problems.append("submit_recording asks due before pend_held is raised")
+            problems.append("%s asks due before pend_held is raised" % name)
         if not signal < due:
-            problems.append("submit_recording asks due before pend.signal holds this submit's value")
+            problems.append("%s asks due before pend.signal holds this submit's value" % name)
         if ret < 0 or due > ret:
-            problems.append("submit_recording asks due outside its batch branch (after its return;)")
+            problems.append("%s asks due outside its batch branch (after its %s)" % (name, end))
 
     flush = block(src, "void queue_flush_locked() {", "gpu/vk/vk_replay.cpp")
     met = flush.find("flush_owed.met(pend.signal)")
@@ -232,7 +237,7 @@ def text_checks(src):
         if "res == VK_SUCCESS" not in line or "pend.any_signal" not in line:
             problems.append("queue_flush_locked clears the owed value for a send that failed or signalled nothing: %s"
                             % line.strip())
-        if met < find(flush, "vkQueueSubmit2(", "queue_flush_locked in gpu/vk/vk_replay.cpp"):
+        if met < find(flush, "submit_or_retry(si", "queue_flush_locked in gpu/vk/vk_replay.cpp"):
             problems.append("queue_flush_locked clears the owed value before it sends")
         if met > find(flush, "pend.cbs.clear()", "queue_flush_locked in gpu/vk/vk_replay.cpp"):
             problems.append("queue_flush_locked clears the owed value after pend.signal is reset")

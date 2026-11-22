@@ -39,6 +39,9 @@
    waiting for a core with the lock held could stall the one that holds a core and waits for the lock.
 
    HOS_KIRBY_QUEUE_ORDER=0: off, arrival order. With upstream's HOS_NVN_HOLD=1 nvnQueueSubmitCommands does not ask. */
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,7 +66,7 @@ static uint64_t handed;         /* the value of the last one handed over */
 
 static int order_on(void) {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("HOS_KIRBY_QUEUE_ORDER"); on = !e || atoi(e) != 0; }
+    if (on < 0) on = env_on_or("HOS_KIRBY_QUEUE_ORDER", 1);
     return on;
 }
 

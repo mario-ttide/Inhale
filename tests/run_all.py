@@ -1,7 +1,7 @@
 """Every game-free check in one run: each tests/test_*.py and nx2/test_*.py in its own process, the C++ unit tests under
 gpu/vk/tests and a byte-compile of every tracked Python file. All of them run even when one fails; the failures are
 printed whole at the end, with a table of every check (slowest first), also to $GITHUB_STEP_SUMMARY when it is set.
-Exits 1 when anything failed.
+Exits 1 when anything failed. On Linux a check that ends or times out takes every process it started with it.
 
     python -I -B tests/run_all.py [--jobs N] [--timeout SECONDS] [--strict] [--no-skip] [--shard K/N]
                                   [--list] [--junit FILE] [--exact] [name ...]
@@ -22,7 +22,7 @@ no arguments and its own defaults.
     RUN_ALL_MODULES = ["zstandard"]                                       # Python packages it imports
     RUN_ALL_SKIP = {"windows": "needs spirv-val: checked on Linux"}       # OS ("linux", "windows") -> why it is skipped
 
-{name} in an argument is a tool or folder find_tools looks for (cxx, vulkan_headers, spirv_headers, spirv_val, glslang,
+{name} in an argument is a tool or folder find_tools looks for (cc, cxx, vulkan_headers, spirv_headers, spirv_val, glslang,
 dotnet, dav1d); a check whose tool, compiler (the word after --cc or --cxx) or module is missing here is skipped, or fails
 with --strict. A check skipped on both OSes (a GPU, the game) names both. A declaration that is not a plain literal of
 that shape, names an unknown placeholder or OS, or any other RUN_ALL_ name, stops the run with the file and line; so
@@ -43,15 +43,20 @@ import argparse
 import ast
 import concurrent.futures
 import importlib.util
+import itertools
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+from compiler_command import parse_compiler  # noqa: E402
 WINDOWS = os.name == "nt"
 OS = "windows" if WINDOWS else "linux"
 
@@ -111,6 +116,18 @@ def dav1d_prefix():
     return None
 
 
+def bundled_mingw():
+    """(windows) The clone's llvm-mingw folder as LONGSHOT_MINGW for every check, as nx2/make_game.py's bundled_mingw() gives
+    it to the build (CONTRIBUTING.md: the variable, or that folder). Without it a check that builds with
+    toolchain.native_target() asks that folder's clang, found on PATH, for the MSVC target: "'algorithm' file not found".
+    LONGSHOT_MINGW set already wins; INHALE_MSVC=1 (the Visual Studio route) and a folder without its clang leave it unset"""
+    if not WINDOWS or os.environ.get("LONGSHOT_MINGW") or os.environ.get("INHALE_MSVC") == "1":
+        return
+    here = os.path.join(ROOT, "llvm-mingw")
+    if os.path.isfile(os.path.join(here, "bin", "clang.exe")):
+        os.environ["LONGSHOT_MINGW"] = here
+
+
 def find_tools():
     return {
         "dav1d": None if WINDOWS else dav1d_prefix(),
@@ -119,6 +136,7 @@ def find_tools():
         "spirv_val": which("spirv-val"),
         "glslang": which("glslangValidator", "glslang"),
         "dotnet": which("dotnet"),
+        "cc": os.environ.get("CC") or which("gcc", "clang"),
         "cxx": which(os.environ.get("CXX", ""), "clang++", "g++", "c++"),
     }
 
@@ -246,14 +264,117 @@ def python_check(rel, decl, tools, timeout):
             args.append(a)
     # (a compiler named by the arguments, or the test's own default one, must be on PATH)
     for i, a in enumerate(args[:-1]):
-        if a in ("--cc", "--cxx") and not which(args[i + 1]):
-            missing.append(args[i + 1])
+        if a in ("--cc", "--cxx"):
+            try:
+                command = parse_compiler(args[i + 1]) if a == "--cc" else [args[i + 1]]
+            except ValueError:
+                missing.append("invalid compiler setting: " + args[i + 1])
+                continue
+            if not command or not which(command[0]):
+                missing.append(args[i + 1])
     missing += [m for m in decl["modules"] if importlib.util.find_spec(m) is None]
 
     def run():
-        return subprocess.run([sys.executable, "-I", "-B", os.path.join(ROOT, rel)] + args, cwd=ROOT, timeout=timeout,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        return run_check([sys.executable, "-I", "-B", os.path.join(ROOT, rel)] + args, timeout)
     return run, missing
+
+
+# (Linux) A check's processes end with it: when it times out, and what it left running when it ends.
+# subprocess.run's timeout kills the check alone, and a child it was waiting for ran on with no end
+# (tests/test_recorder_sync.py's broken recorder hangs on purpose until the check's own 30 s timeout). Each check's
+# processes carry a token in their environment, which they keep when their parent ends or they leave the process
+# group, so they are found in /proc; the descendants of the check and of each of those are found by their parents too
+# (one started with another environment). The checks stay in the runner's process group, so Ctrl-C and a kill of the
+# group reach them as before. Elsewhere (Windows, macOS) a check runs as subprocess.run runs it.
+CHECKS_ENV = "INHALE_RUN_ALL_CHECKS"   # (space-separated: a runner run by a check adds its own token)
+CHECK_IDS = itertools.count()
+# (one scan at a time: the runner's threads share one interpreter, and scans at once slow each other down many times over)
+SCAN_LOCK = threading.Lock()
+PROC = sys.platform.startswith("linux") and os.path.isdir("/proc")
+
+
+def run_check(cmd, timeout):
+    if not PROC:
+        return subprocess.run(cmd, cwd=ROOT, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              stdin=subprocess.DEVNULL)
+    token = "%d.%d" % (os.getpid(), next(CHECK_IDS))
+    env = dict(os.environ)
+    env[CHECKS_ENV] = (env.get(CHECKS_ENV, "") + " " + token).strip()
+    with subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          stdin=subprocess.DEVNULL) as p:
+        try:
+            out, _ = p.communicate(timeout=timeout)
+        except BaseException:   # (the timeout, with the output so far: not waited for again, as a child may hold it)
+            end_check(p.pid, token)
+            p.wait()
+            raise
+        end_check(None, token)
+        return subprocess.CompletedProcess(cmd, p.returncode, out)
+
+
+def check_processes(root, token):
+    """the live processes (not zombies) of the check: root, any process of ours with the token, and their descendants"""
+    with SCAN_LOCK:
+        return scan_processes(root, token)
+
+
+def scan_processes(root, token):
+    me, uid, parent, found = os.getpid(), os.getuid(), {}, set()
+    key, mine = CHECKS_ENV.encode() + b"=", token.encode()
+    for d in os.listdir("/proc"):
+        if not d.isdigit() or int(d) == me:
+            continue
+        pid = int(d)
+        try:
+            if os.stat("/proc/%d" % pid).st_uid != uid:   # (only our own: the rest cannot be the check's, nor be killed)
+                continue
+            with open("/proc/%d/stat" % pid, "rb") as f:
+                stat = f.read().rsplit(b")", 1)[1].split()
+            if stat[0] == b"Z":
+                continue
+            parent[pid] = int(stat[1])
+            with open("/proc/%d/environ" % pid, "rb") as f:
+                env = f.read().split(b"\0")
+            if any(e.startswith(key) and mine in e[len(key):].split() for e in env):
+                found.add(pid)
+        except (OSError, IndexError, ValueError):   # (ended while read, or not ours to read)
+            continue
+    if root in parent:
+        found.add(root)
+    grew = True
+    while grew:   # (a descendant started with another environment, by its parent)
+        more = {pid for pid, pp in parent.items() if pp in found and pid not in found}
+        found |= more
+        grew = bool(more)
+    return found
+
+
+def end_check(root, token):
+    """SIGKILL to each of the check's processes, again until none is left: one started while they were being ended is
+    found the next time, and a last look after the first empty one finds one whose environment read back empty in the
+    middle of an execve. Given up once five rounds in a row (about 0.2 s) end none (a process that cannot be killed, as one in
+    uninterruptible sleep). A PID is read and killed a moment apart: one reused in between could be hit, as with any
+    kill by PID"""
+    last, empty, stuck = None, 0, 0
+    for _ in range(100):
+        procs = check_processes(root, token)
+        if not procs:
+            empty += 1
+            if empty == 2:
+                return
+            time.sleep(0.01)
+            continue
+        empty = 0
+        stuck = stuck + 1 if last is not None and len(procs) >= len(last) else 0
+        if stuck == 5:
+            return
+        last = procs
+        for pid in procs:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        time.sleep(0.005)
 
 
 def cpp_checks(tools, timeout):
@@ -267,12 +388,10 @@ def cpp_checks(tools, timeout):
         def run():
             with tempfile.TemporaryDirectory() as tmp:
                 exe = os.path.join(tmp, "t.exe")
-                r = subprocess.run([cxx, "-std=c++20", *flags, os.path.join(ROOT, src), "-o", exe], cwd=ROOT,
-                                   timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                r = run_check([cxx, "-std=c++20", *flags, os.path.join(ROOT, src), "-o", exe], timeout)
                 if r.returncode:
                     return r
-                return subprocess.run([exe] + [a.replace("{tmp}", tmp) for a in args], cwd=ROOT, timeout=timeout,
-                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                return run_check([exe] + [a.replace("{tmp}", tmp) for a in args], timeout)
         return run
     rect = "gpu/vk/tests/present_rect_test.cpp"
     out.append((rect, build_and_run(rect, ["-Wall", "-Wextra", "-Werror"], [])))
@@ -343,13 +462,13 @@ class Result:
 
 # (--changed, the dev-loop proposal's D1) the checks that read what changed: most tests name the files they cut code from or run,
 # by path or by name, so a test whose text names a changed file is picked. A change to this runner, or to a shared .py of tests/
-# that is not a test, picks every check. Before a pull request the whole run is still the one that counts (docs/workflow.md)
-INHALE_REMOTE = "git.magicbean.dev/magicbeandev/longshot"   # (scripts/forge.py's HOST and REPO, as add_remote matches them)
+# that is not a test, picks every check. Before a pull request the whole run is still the one that counts (docs/dev/developing.md#from-claim-to-merge)
+INHALE_REMOTE = "git.magicbean.dev/magicbeandev/longshot"   # (forge.py's HOST and REPO, as add_remote matches them)
 
 
 def default_base():
-    """--changed's base when none is named: main on the remote that points at Inhale (scripts/forge.py adds one as forge
-    unless one already does: CONTRIBUTING.md's git rebase forge/main), else origin/main"""
+    """--changed's base when none is named: main on the remote that points at Inhale (forge.py, from MagicBeanDev/Tooling,
+    adds one as forge unless one already does: Tooling's docs/forge.md: git rebase forge/main), else origin/main"""
     r = subprocess.run(["git", "-C", ROOT, "remote", "-v"], capture_output=True, text=True)
     for line in (r.stdout if r.returncode == 0 else "").splitlines():
         parts = line.split()
@@ -477,6 +596,7 @@ def main():
     if a.changed is not None and (a.names or a.write_times):
         p.error("--changed picks the checks itself: no names, no --write-times")
     times = load_times()
+    bundled_mingw()
     tools = find_tools()
 
     checks = []

@@ -41,10 +41,10 @@ def main():
         block(memory, "void reap_mirrors("),
         eviction,
     ])
-    # Rollback, prefetch drops, a trim's rollback (mirrors_trim) and both published-import reapers must share the same
-    # owner-release point.
+    # Rollback, an import with no memory type for its pointer, prefetch drops, a trim's rollback (mirrors_trim) and both
+    # published-import reapers must share the same owner-release point.
     assert memory.count("vkDestroyBuffer(") == 1
-    assert memory.count("destroy_import_buffer(") == 10
+    assert memory.count("destroy_import_buffer(") == 11
     fixture = (ROOT / "tests/texel_buffer_ownership_test.cpp").read_text(encoding="utf-8")
     fixture = fixture.replace("/* DEAD IMPORT */", block(memory, "struct DeadImport {") + ";")
     fixture = fixture.replace("/* ACTUAL */", actual)

@@ -50,7 +50,7 @@ void logf_at(LogLevel, const char*, ...) {}
 // (texture_frame's: Linux memory pressure is on, and it has just begun; VRAM is near what the driver allows. The cases
 // set them)
 bool linux_pressed = false, linux_entered_pressure = false;
-uint8_t pool_pressure = 0;   // (inhale) upstream's #637: 0 normal, 1 pressed, 2 critical (was bool pool_pressed)
+uint8_t pool_pressure = 0;   // (0 normal, 1 pressed, 2 critical)
 // (staging()'s count of every arena it makes, and their time: the log's "staging ... made so far")
 std::atomic<uint64_t> st_arena_makes{0};
 std::atomic<int64_t> st_arena_make_ns{0};
@@ -58,11 +58,10 @@ std::atomic<int64_t> st_arena_make_ns{0};
 /* ACTUAL */
 
 constexpr uint64_t MB = 1ull << 20;
-uint64_t keep = 64 * MB;   // (what a card of 6.5 GB or less keeps between loads; 256 MB above)
-// (inhale) upstream's #637 made the arenas 16 MB and keeps two warm ones however long they idle: a load's burst is
-// twenty pieces of 15 MB (15 + 15 do not fit one arena: twenty arenas, 320 MB), and two arenas taking turns fit in what
-// a card keeps between loads with the rule off too
-const std::vector<uint64_t> burst(20, 15 * MB);
+// (what is kept between loads: one 16 MB arena here, RX_VK_STAGING_KEEP_MB=16, so that the rule is what keeps the second
+// of two taking turns; the rule's own 128 MB on a card of 6.5 GB or less and 256 MB above hold eight and sixteen)
+uint64_t keep = 16 * MB;
+const std::vector<uint64_t> kLoad(20, 15 * MB);   // (a load: 15 + 15 MB do not fit one arena, so twenty, 320 MB)
 // One frame: a submission that stages the pieces, then the present. The GPU finishes a frame's submission between that
 // frame's present and the next one (one frame in flight)
 void frame(const std::vector<uint64_t>& pieces, int64_t ms = 33) {
@@ -85,21 +84,25 @@ int run(int argc, char** argv) {
     dev.props.limits.nonCoherentAtomSize = 64;
     if (test == "consecutive") {
         // a little staged in each of 20 frames in a row: the frame before's arena is not the GPU's to give yet, so two take
-        // turns. Kept to 64 MB, the idle one of the two went at every second present and was made again a frame later
+        // turns. Kept to one arena, the idle one of the two went at every second present and was made again a frame later
         for (int i = 0; i < 20; i++) frame({1 * MB});
-        require(makes == 2 && destroys == 0, "two arenas made for 20 frames in a row, none given back between");
+        if (off) require(makes >= 8, "RX_VK_STAGING_BURST_S=0: an arena made every second frame, as before");
+        else require(makes == 2 && destroys == 0, "two arenas made for 20 frames in a row, none given back between");
         require(st_arena_makes.load() == makes, "every arena made is counted, for the log's line");
     } else if (test == "settles") {
-        for (int i = 0; i < 20; i++) frame({1 * MB});
+        keep = 64 * MB;   // (four arenas: more than the two kept warm)
+        frame({15 * MB, 15 * MB, 15 * MB, 15 * MB});
         for (int i = 0; i < 70; i++) frame({});   // (2.3 s with nothing staged)
-        require(arenas.size() == 2 && held() == 32 * MB, "the load over, the two arenas fit in what is kept between loads");
-        for (int i = 0; i < 31; i++) frame({}, 1000);
-        require(arenas.size() == 2 && destroys == 0, "nothing staged for 30 s: two warm arenas kept");
+        require(arenas.size() == 4 && held() == 64 * MB, "the load over, what is kept between loads is left");
+        for (int i = 0; i < 6; i++) frame({}, 1000);
+        require(arenas.size() == 4, "nothing staged for 8 s, no memory pressure: all kept");
+        for (int i = 0; i < 25; i++) frame({}, 1000);
+        require(arenas.size() == 2 && held() == 32 * MB, "nothing staged for 30 s: two kept warm, the others gone");
     } else if (test == "cap") {
-        frame(burst);
+        frame(kLoad);
         require(arenas.size() == 20, "twenty arenas for twenty pieces of 15 MB");
         frame({});
-        if (off) require(held() == 64 * MB, "RX_VK_STAGING_BURST_S=0: 64 MB kept, as before");
+        if (off) require(held() == 16 * MB, "RX_VK_STAGING_BURST_S=0: what is kept between loads, as before");
         else require(held() == 256 * MB, "at most 256 MB of the arenas just used are kept");
     } else if (test == "big") {
         frame({100 * MB});
@@ -110,18 +113,19 @@ int run(int argc, char** argv) {
         keep = 256 * MB;   // (a card over 6.5 GB: the rule adds nothing to what it keeps)
         for (int i = 0; i < 20; i++) frame({1 * MB});
         require(makes == 2 && destroys == 0, "256 MB kept between loads: two arenas for 20 frames, as before");
-        frame(burst);
+        frame(kLoad);
         frame({});
         require(held() == 256 * MB, "256 MB kept between loads: no more than that after a load");
     } else if (test == "pressure") {
-        // Linux memory pressure: an idle arena goes after 5 s, not 30, and when the pressure begins the idle ones go at
-        // once, the ones a load used a moment ago too
-        for (int i = 0; i < 20; i++) frame({1 * MB});
+        // Linux memory pressure: an idle arena goes after 5 s, not 30 (two stay warm), and when the pressure begins the
+        // idle ones go at once, the ones a load used a moment ago too
+        keep = 64 * MB;
+        frame({15 * MB, 15 * MB, 15 * MB, 15 * MB});
         for (int i = 0; i < 70; i++) frame({});
-        require(arenas.size() == 2, "the load over: two arenas kept");
+        require(arenas.size() == 4, "the load over: four arenas kept");
         linux_pressed = true;
         for (int i = 0; i < 6; i++) frame({}, 1000);
-        require(arenas.size() == 2, "under memory pressure, nothing staged for 5 s: two warm arenas kept");
+        require(arenas.size() == 2, "under memory pressure, nothing staged for 5 s: two kept warm, the others gone");
         linux_pressed = false;
         for (int i = 0; i < 20; i++) frame({1 * MB});
         require(arenas.size() == 2, "two arenas taking turns again");
@@ -133,18 +137,18 @@ int run(int argc, char** argv) {
         // and what stays is what the card keeps between loads, as before the rule. On a card of 6.5 GB or less the arenas are
         // VRAM behind the BAR: the 192 MB more would come off what a load's textures need
         pool_pressure = 1;
-        frame(burst);
+        frame(kLoad);
         require(arenas.size() == 20, "twenty arenas for twenty pieces of 15 MB");
         frame({});
-        require(held() == 64 * MB, "VRAM short: 64 MB kept, not a burst's 256 MB");
-        const unsigned kept_made = makes;
+        require(held() == 16 * MB, "VRAM short: what is kept between loads, not a burst's 256 MB");
+        const unsigned loaded = makes;
         for (int i = 0; i < 20; i++) frame({1 * MB});
-        require(makes == kept_made, "VRAM short: the arenas kept take turns, none made");
+        require(makes >= loaded + 8, "VRAM short: an arena made every second frame, as before the rule");
         pool_pressure = 0;   // (room again: the rule is back)
         const unsigned before = makes;
         for (int i = 0; i < 20; i++) frame({1 * MB});
         require(makes <= before + 1, "room again: two arenas take turns, none made every second frame");
-        frame(burst);
+        frame(kLoad);
         frame({});
         require(held() == 256 * MB, "room again: at most 256 MB of the arenas just used are kept");
     } else {

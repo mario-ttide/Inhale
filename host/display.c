@@ -67,7 +67,7 @@ static int esc_had_capture;
    game's thread), their clicks */
 static int game_menu_open;
 /* (one of them has the mouse, the Insert menu closed: read on the game's thread, where the mouse's side buttons, which no
-   menu takes, stay their controls'. host/nn_hid.c mouse_buttons_arm, Inhale #1306) */
+   menu takes, stay their controls'. host/nn_hid.c mouse_buttons_arm) */
 static volatile LONG game_menu_mouse;
 int hos_mouse_in_game_menu(void) { return (int)game_menu_mouse; }
 static volatile LONG64 game_menu_seen_ns;
@@ -458,13 +458,13 @@ static LRESULT CALLBACK wndproc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
             if (fullscreen) set_fullscreen(w,1); /* selection/hotplug changes, on the window thread */
         }
         pointer_update(w, 0, 0);
-        /* (longshot, #1532) a controller is not input to Windows: playing with one, the display went off at the power
+        /* (longshot) a controller is not input to Windows: playing with one, the display would go off at the power
            plan's timeout. While the game's window is in front and not minimized, the display's idle timer is reset every
            30 s (ES_DISPLAY_REQUIRED without ES_CONTINUOUS: nothing is held when the game is left or closed).
            HOS_KEEP_DISPLAY=0: Windows' timeout as before */
         static ULONGLONG last_awake;
         static int keep = -1;
-        if (keep < 0) keep = !getenv("HOS_KEEP_DISPLAY") || atoi(getenv("HOS_KEEP_DISPLAY")) != 0;
+        if (keep < 0) keep = env_on_or("HOS_KEEP_DISPLAY", 1);
         const ULONGLONG now = GetTickCount64();
         if (keep && renderer && now - last_awake >= 30000 && GetForegroundWindow() == w && !IsIconic(w)) {
             last_awake = now;
@@ -669,7 +669,14 @@ static DWORD WINAPI display_main(void *p) {
     RegisterRawInputDevices(&rid, 1, sizeof rid);
     pointer_update(hwnd, 0, 0);
     renderer = rx_start(hwnd);
-    if (!renderer) hos_log("display: no renderer: the window stays black");
+    if (!renderer) {   /* (longshot) the game ends at once, as on Linux (host/posix/display_sdl.c renderer_main): behind a black
+                          window it played on until the player closed it. The window after it reads this line */
+        hos_log("display: the renderer did not start: the game ends, and the window after it says why");
+        hos_log_flush();
+        void hos_crash_clean_end(void);
+        hos_crash_clean_end();
+        ExitProcess(1);
+    }
     SetEvent(renderer_up);
     SetTimer(hwnd, 1, 250, NULL);
     MSG m;
@@ -684,7 +691,7 @@ static DWORD WINAPI display_main(void *p) {
    shaders were being prepared (80 s on a first start) was lost: that run had no ambient light, black foliage and dark characters. The
    game itself goes on starting as it did: held at the start instead, it left holes in the ground */
 void hos_renderer_wait(void) {
-    { const char *e = getenv("HOS_NO_RENDERER_WAIT"); if (e && atoi(e) != 0) return; }   /* (=0: the wait, as without it) */   /* (a test: the game's first GPU work no longer waits for the renderer, as before lighting-fix) */
+    if (env_on("HOS_NO_RENDERER_WAIT")) return;   /* (=0: the wait, as without it) */   /* (a test: the game's first GPU work no longer waits for the renderer, as before lighting-fix) */
     if (renderer_up) WaitForSingleObject(renderer_up, INFINITE);
 }
 

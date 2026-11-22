@@ -197,6 +197,13 @@ def write_image_c(gen, img, meta, exefs):
              # (inhale) svcGetInfo 16: not 0 turns on the SDK's virtual address memory (hos_svc.c)
              "const uint64_t hos_system_resource_size = %#xULL;   /* (main.npdm's) */"
              % int.from_bytes(npdm[0x14:0x18], "little")]
+    main = next((m for m in meta["modules"] if m["name"] == "main"), None)
+    if main:   # (hookshot: host/cheats.c, its regions and the code it cannot write: the code up to .rodata)
+        ro = next((s["addr"] for s in main.get("segments", ()) if s["name"] == ".rodata"), main["base"] + main["size"])
+        lines.append("const uint64_t hos_main_base = %#xULL, hos_main_size = %#xULL, hos_main_code_end = %#xULL;"
+                     % (main["base"], main["size"], ro))
+    else:
+        lines.append("const uint64_t hos_main_base = 0, hos_main_size = 0, hos_main_code_end = 0;")
     for sym in ("_init_libc0", "_init_libc1", "_init_libc2", "nnosInitialize", "nninitInitializeSdkModule",
                 "nvnBootstrapLoaderInternal"):
         lines.append("const uint64_t hos_entry_%s = %#xULL;" % (sym.lstrip("_"), ex.get(sym, 0)))

@@ -20,6 +20,9 @@
    SET_ACTIVITY frame by a frame; a Ping is echoed as a Pong. */
 #include "hos_paths.h"   /* (first: windows.h on Windows) */
 #include "options_path.h"
+#ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
+#include "../gpu/vk/compat/inhale_env.h"
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,7 +49,7 @@
 
 void hos_log(const char *fmt, ...);
 int rx_option(int id, int otherwise);
-const char *hos_version(void);   /* hos_main.c */
+const char *hos_version(void);   /* host/version.c */
 int hos_oot_current_map(char *out, size_t cap);   /* (hos_main.c: the map Link was last seen in) */
 int hos_oot_state(int *event, int *loading, int *child);
 int hos_oot_stats(int *life, int *max_life, int *rupees, int *tokens, int *pieces);   /* (hos_main.c: -1 each when not known) */
@@ -359,8 +362,7 @@ static void *presence_thread(void *arg) {
 
 /* hos_main.c, once the game starts (not for --prepare-shaders). HOS_DISCORD=0: no thread at all */
 void hos_discord_start(void) {
-    const char *e = getenv("HOS_DISCORD");
-    if (e && !atoi(e)) return;
+    if (!env_on_or("HOS_DISCORD", 1)) return;
 #ifdef _WIN32
     HANDLE t = CreateThread(NULL, 256u << 10, presence_thread, NULL, 0, NULL);
     if (t) CloseHandle(t);
