@@ -14,7 +14,9 @@ Not applied, and listed:
   - nx2/oot_patches.py: the file here is a stand-in, and Longshot's holds text made from the other game. When
     Longshot changed its file, the top-level names it gained and the stand-in lacks are printed: the lift calls them.
     The other game's other files (oot_*) are Longshot's own, gated here, and are applied as any file;
-  - a change or a removal of a file this clone does not track (left out at the import, or removed since).
+  - a change or a removal of a file this clone does not track (left out at the import, or removed since);
+  - a removal of a file this clone changed (its text here is not Longshot's at the base, renamed): git cannot apply
+    it, and one such removal stops the whole apply. Listed: `git rm` it, or keep what this fork needs of it.
 A file new in Longshot is applied; whether it belongs here is for the review (a test bound to something left out
 does not). --list prints what would be applied and what would not, and changes nothing.
 
@@ -63,12 +65,15 @@ def names_lacking(old, new, here):
     return sorted(names[1] - names[0] - names[2])
 
 
-def split(changes, tracked):
-    """changes: (status letter, path) of the upstream diff. -> (paths to apply, [(path, why not)])"""
+def split(changes, tracked, changed_here=()):
+    """changes: (status letter, path) of the upstream diff; changed_here: the removed paths whose text here differs.
+    -> (paths to apply, [(path, why not)])"""
     take, skip = [], []
     for status, path in changes:
         if path == STAND_IN:
             skip.append((path, "a stand-in here"))
+        elif status == "D" and path in changed_here:
+            skip.append((path, "removed in Longshot, changed here"))
         elif status != "A" and rename_full.map_path(path) not in tracked:
             skip.append((path, "not tracked here"))
         else:
@@ -115,7 +120,14 @@ def main():
     names = git(a.upstream, "diff", "--no-renames", "--name-status", "-z", base, to, "--", *PATHS).stdout.decode("utf-8").split("\0")
     changes = list(zip(names[0::2], names[1::2]))
     tracked = set(git(ROOT, "ls-files", "-z").stdout.decode("utf-8").split("\0"))
-    take, skip = split(changes, tracked)
+    changed_here = set()   # (compared as blobs, the index's with the base's renamed: no line-ending filter between)
+    for status, path in changes:
+        if status == "D" and rename_full.map_path(path) in tracked:
+            old = rename_full.map_bytes(path, git(a.upstream, "show", "%s:%s" % (base, path)).stdout)
+            if (git(ROOT, "hash-object", "--stdin", data=old).stdout.strip() !=
+                    git(ROOT, "rev-parse", ":" + rename_full.map_path(path)).stdout.strip()):
+                changed_here.add(path)
+    take, skip = split(changes, tracked, changed_here)
     print("Longshot %s..%s: %d files changed, %d to apply, %d not applied" % (base[:8], to[:8], len(changes), len(take), len(skip)))
     for path, why in skip:
         print("  not applied (%s): %s" % (why, path))

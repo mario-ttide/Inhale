@@ -7,7 +7,8 @@ made here: no clone of Longshot, no game.
   - the marks on Longshot's changes stay, with a version before the name too, and so does the text of a file kept
     whole (the script that holds the shader text its compiled headers are checked against);
   - what a sync applies: a file of the other game (oot_*) is taken like any file, new or changed, and only the
-    stand-in nx2/oot_patches.py is not; the names Longshot's file gained that the stand-in lacks are found.
+    stand-in nx2/oot_patches.py is not, nor a file Longshot removed and this fork changed; the names Longshot's
+    file gained that the stand-in lacks are found.
 
     python -I -B tests/test_sync_rules.py
 """
@@ -68,6 +69,11 @@ def main():
     assert take == ["nx2/oot_new.py", "nx2/oot_shadow.py", "host/oot_fov.c", "scripts/longshot_ctl.py", "nx2/lift.py"], take
     assert skip == [("nx2/oot_patches.py", "a stand-in here"), ("nx2/oot_patches.py", "a stand-in here"),
                     ("scripts/forge.py", "not tracked here")], skip
+    # (a file Longshot removed and this fork changed: a removal git cannot apply stops the whole apply, so it is left
+    # out and listed; one removed with no change here is applied)
+    take, skip = sync_upstream.split([("D", "host/oot_fov.c"), ("D", "nx2/lift.py")], tracked, {"nx2/lift.py"})
+    assert take == ["host/oot_fov.c"], take
+    assert skip == [("nx2/lift.py", "removed in Longshot, changed here")], skip
 
     old = "import re\nA = 1\ndef f(s):\n    B = 2\n    return s\n"
     new = old + "C = [\n]\ndef g(s, n=0):\n    return s\ndef h():\n    pass\nD: int = 3\n"
