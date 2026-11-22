@@ -1130,6 +1130,12 @@ static void pads_read(uint64_t *buttons, int32_t stick[4], int *deck_builtin_inp
         was = n;
         sdl_pads = n;
     }
+    int kirby_npad_split(void);
+    if (kirby_npad_split()) {   /* (inhale) a controller for each player (host/kirby_npad.c): No.1's pad alone, the others' theirs */
+        int hos_sdl_pad_player(int player, uint64_t *buttons, int32_t stick[4]);
+        raw = 0, memset(s, 0, sizeof s);
+        hos_sdl_pad_player(0, &raw, s);
+    }
     /* Polling XInput alongside SDL causes double-reads and conflicting button mappings when Steam Input
        or controller wrappers emulate an XInput controller for a pad SDL is already reading.
        Only poll XInput when SDL has no open controllers, unless HOS_XINPUT=1 is explicitly requested. */
@@ -1571,7 +1577,11 @@ static void npad_states(Ctx *c) {
     uint32_t id = G32(ARG(2));
     uint64_t buttons = 0, taps = 0;
     int32_t stick[4] = {0};
-    int connected = id == NPAD_NO1;
+    /* (inhale) a controller for each player (host/kirby_npad.c, issue #16): No.1 is player 0 and reads as before (connected
+       below); No.2 on, with the Controls tab's row on, a player of their own pad's alone */
+    int kirby_npad_player(uint32_t id);
+    const int player = kirby_npad_player(id);
+    int connected = player == 0;
     {
         static int64_t last_read;
         static uint32_t seen_ids[16];
@@ -1587,7 +1597,8 @@ static void npad_states(Ctx *c) {
         for (int i = 0; i < nseen; i++) known |= seen_ids[i] == id;
         if (!known && nseen < 16) {
             seen_ids[nseen++] = id;
-            hos_log("hid: the game reads npad %#x (%s, lr %#llx)", id, connected ? "No.1" : "not connected",
+            hos_log("hid: the game reads npad %#x (%s, lr %#llx)", id,
+                    connected ? "No.1" : player > 0 ? "a player's pad" : "not connected",   /* (inhale) */
                     (unsigned long long)c->x[30]);
         }
     }
@@ -1671,11 +1682,15 @@ static void npad_states(Ctx *c) {
     if (connected && !played) buttons = hos_title_input(buttons);
     uint64_t hos_frame_step_buttons(uint64_t buttons);   /* nn_vi.c: the frame step of the wheel and quick menus */
     if (connected && !played) buttons = hos_frame_step_buttons(buttons);
+    if (player > 0 && !rx_option(1, 0) && (game_in_front() || pads_in_background(getenv("HOS_INPUT_BACKGROUND"), rx_option(4, 0)))) {
+        void kirby_npad_read(int player, uint64_t (*bind)(uint64_t), uint64_t *buttons, int32_t stick[4]);
+        kirby_npad_read(player, bound_pad_buttons, &buttons, stick);   /* (inhale) No.2 on: that player's pad alone */
+    }
     /* (no stick direction bits 16-23 in the state: the game's own controllers take bits 16-19 as the D-pad, so the left
        stick pushed forward, bit 17, held one and A pressed while running forward did not roll. They work out the
        sticks' directions from the axes themselves) */
     /* (what the game is given: recorded here, or the recording's; HOS_INPUT_RECORD / HOS_INPUT_PLAY) */
-    uint64_t word = played ? 0 : oc_pad_word(buttons);   /* (while the game waits for a note button, the five are the controls: oc_notes) */
+    uint64_t word = played ? 0 : player > 0 ? buttons : oc_pad_word(buttons);   /* (inhale: No.2 on, no note pass) */   /* (while the game waits for a note button, the five are the controls: oc_notes) */
     if (played) {   /* (the frame's pad, with the cheats' inputs as it had them) */
         word = given.bits;
         memcpy(stick, given.stick, sizeof given.stick);
@@ -1687,14 +1702,15 @@ static void npad_states(Ctx *c) {
         const MoviePad pad = {word, {stick[0], stick[1], stick[2], stick[3]}, flight, axes, height};
         hos_input_movie_end(&pad);   /* (recording: the frame's pad) */
     }
-    int64_t s = ++sampling;
+    int64_t kirby_npad_sampling(int player);
+    int64_t s = player > 0 ? kirby_npad_sampling(player) : ++sampling;   /* (inhale) each Npad its own */
     for (int i = 0; i < count; i++) {
         uint64_t e = out + (uint64_t)i * STATE_SIZE;
         memset(GP(e), 0, STATE_SIZE);
         G64(e) = (uint64_t)(s - i);
         G64(e + 8) = word;
         memcpy(GP(e + 16), stick, 16);
-        G32(e + 32) = connected ? ATTR_CONNECTED : 0;
+        G32(e + 32) = player >= 0 ? ATTR_CONNECTED : 0;   /* (inhale) No.2 on too, with a pad (kirby_npad.c) */
     }
     if (connected) input_snapshot_active = 0;
     RET(count);
@@ -1705,7 +1721,8 @@ HLE(_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyDualStateEiRKj) { npad_states(c); }
 HLE(_ZN2nn3hid13GetNpadStatesEPNS0_16NpadJoyLeftStateEiRKj) { npad_states(c); }
 HLE(_ZN2nn3hid13GetNpadStatesEPNS0_17NpadJoyRightStateEiRKj) { npad_states(c); }
 /* GetNpadStyleSet(unsigned int const&) -> BitFlagSet<32, NpadStyleTag> */
-HLE(_ZN2nn3hid15GetNpadStyleSetERKj) { RET(G32(ARG(0)) == NPAD_NO1 ? STYLE_FULLKEY : 0); }
+int kirby_npad_player(uint32_t id);   /* (inhale) host/kirby_npad.c: the player an npad id is, -1 none (issue #16) */
+HLE(_ZN2nn3hid15GetNpadStyleSetERKj) { RET(kirby_npad_player(G32(ARG(0))) >= 0 ? STYLE_FULLKEY : 0); }
 
 HLE(_ZN2nn3hid14InitializeNpadEv) {}
 HLE(_ZN2nn3hid18InitializeKeyboardEv) {}
@@ -1716,11 +1733,13 @@ HLE(_ZN2nn3hid22SetSupportedNpadIdTypeEPKjm) {}
 HLE(_ZN2nn3hid24SetSupportedNpadStyleSetENS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEE) {}
 HLE(_ZN2nn3hid18StartSixAxisSensorERKNS0_19SixAxisSensorHandleE) {}
 
-/* ShowControllerSupport(ControllerSupportResultInfo*, ControllerSupportArg const&) -> Result: one player, No.1 */
+/* ShowControllerSupport(ControllerSupportResultInfo*, ControllerSupportArg const&) -> Result: (inhale) the players with
+   a controller, No.1 selected (host/kirby_npad.c, issue #16; upstream's: one player, No.1) */
 HLE(_ZN2nn3hid21ShowControllerSupportEPNS0_27ControllerSupportResultInfoERKNS0_20ControllerSupportArgE) {
-    memset(GP(ARG(0)), 0, 8);
-    *(uint8_t *)GP(ARG(0)) = 1;
-    G32(ARG(0) + 4) = NPAD_NO1;
+    void kirby_controller_support(const uint8_t *arg, uint8_t *result);
+    static const uint8_t one[8] = {1, 1};   /* (an argument out of guest memory: one player, upstream's answer) */
+    if (hos_guest_range(ARG(0), 8))
+        kirby_controller_support(hos_guest_range(ARG(1), 6) ? (const uint8_t *)GP(ARG(1)) : one, (uint8_t *)GP(ARG(0)));
     RET(0);
 }
 
@@ -1859,6 +1878,8 @@ static void vibration_send(uint64_t handle, uint64_t value) {
     memcpy(v, GP(value), sizeof v);
     const int dev = (G32(handle) >> 16) & 1;
     rumble_map(v, amp[dev]);
+    void kirby_npad_vibration(uint32_t handle, int dev, const float amp[2]);   /* (inhale) that player's pad's: kirby_npad.c */
+    kirby_npad_vibration(G32(handle), dev, amp[dev]);
     {   /* (longshot) what the game asks for: the first values, then a count now and then */
         static long long n, strong;
         static float peak;

@@ -80,6 +80,11 @@ static int state_deck_builtin;   /* (longshot) the Deck's built-in controls gave
 static char state_name[128];   /* the first controller's name (host/prompts.c: the button prompts' Auto) */
 static int state_type, state_sdl;   /* and its SDL type (the loaded SDL's numbers, 0 unknown), and that SDL (3, 2; 0 none) */
 static volatile LONG rumble_low, rumble_high;   /* 0..65535, set by the vibration HLE */
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): the open pads that give input, in slot order,
+   are players 0, 1, ...: each one's buttons and sticks as the poll read them, and its own motors' vibration */
+static uint64_t player_buttons[MAX_PADS];
+static int32_t player_stick[MAX_PADS][4];
+static volatile LONG rumble_of[MAX_PADS][2];
 /* (the Insert menu's Rumble strength row, changed: a short rumble at the new strength, so the player feels what the row
    does, and that the controller rumbles at all) until when, hos_now_ns */
 static int64_t rumble_test_until;
@@ -522,6 +527,9 @@ static void pads_poll(void) {
         int32_t s[4] = {0};
         int count = 0;
         int rx_option(int id, int otherwise);
+        uint64_t pb[MAX_PADS] = {0};   /* (inhale) each player's (player_buttons, player_stick) */
+        int32_t ps[MAX_PADS][4] = {{0}};
+        const int split = rx_option(HOS_OPT_PAD_PER_PLAYER, 0) != 0;
         /* (longshot) the Controls page's Vibration (Auto, Basic, Off) and Vibration strength (percent of the game's, every
            backend's: host/vibration.h). An options file's Rumble strength of 0 is Off */
         int strength = rx_option(9, 100);
@@ -593,6 +601,9 @@ static void pads_poll(void) {
             if (hos_sdl_pad_button(gc, BTN_TOUCHPAD)) b |= 1ULL << HOS_PAD_TOUCHPAD;
             if (hos_sdl_pad_axis(gc, AX_LT) > 8000) b |= 1ULL << HOS_PAD_LTRIGGER;
             if (hos_sdl_pad_axis(gc, AX_RT) > 8000) b |= 1ULL << HOS_PAD_RTRIGGER;
+            if (split) pb[count - 1] = sig | (hos_sdl_pad_button(gc, BTN_TOUCHPAD) ? 1ULL << HOS_PAD_TOUCHPAD : 0) |   /* (inhale) its own, */
+                            (hos_sdl_pad_axis(gc, AX_LT) > 8000 ? 1ULL << HOS_PAD_LTRIGGER : 0) |      /* for its player */
+                            (hos_sdl_pad_axis(gc, AX_RT) > 8000 ? 1ULL << HOS_PAD_RTRIGGER : 0);
             const int inv_x = rx_option(16, 0);
             const int inv_y = rx_option(17, 0);
             const int z = rx_option(11, 0);   /* (the menu's Stick dead zone) */
@@ -626,6 +637,7 @@ static void pads_poll(void) {
             if (inv_y) v[3] = -v[3];
             for (int k = 0; k < 4; k++)
                 if ((v[k] < 0 ? -v[k] : v[k]) > (s[k] < 0 ? -s[k] : s[k])) s[k] = v[k];
+            memcpy(ps[count - 1], v, sizeof v);   /* (inhale) */
             {   /* (motion: the pad last used; a stick counts by which way it is pushed, not by how far) */
                 for (int k = 0; k < 4; k++) sig |= (uint64_t)(v[k] > 0 ? 1 : v[k] < 0 ? 2 : 0) << (32 + 2 * k);
                 if (sig != pads[i].input_sig) pads[i].input_sig = sig, pads[i].used_ns = now;
@@ -657,6 +669,9 @@ static void pads_poll(void) {
             if (pad_percent != 100)
                 rumble_strength(testing ? 0xC000 : (uint16_t)rumble_low, testing ? 0xC000 : (uint16_t)rumble_high,
                                 strength * pad_percent / 100, pad_motors);
+            if (split && !testing)   /* (inhale) that player's own vibration (host/kirby_npad.c) */
+                rumble_strength((uint16_t)rumble_of[count - 1][0], (uint16_t)rumble_of[count - 1][1], strength * pad_percent / 100,
+                                pad_motors);
             const uint16_t lo = pad_motors[0], hi = pad_motors[1];
             if (rumble_due(lo, hi, pads[i].rumble_lo, pads[i].rumble_hi, now, pads[i].rumble_ns)) {
                 hos_sdl_pad_rumble(gc, lo, hi, lo || hi ? 1000 : 0);
@@ -680,6 +695,7 @@ static void pads_poll(void) {
         state_buttons = b;
         memcpy(state_stick, s, sizeof s);
         state_count = count;
+        memcpy(player_buttons, pb, sizeof pb), memcpy(player_stick, ps, sizeof ps);   /* (inhale) */
         state_deck_builtin = deck_builtin;
         state_name[0] = 0;
         state_type = state_sdl = 0;
@@ -801,3 +817,27 @@ void hos_sdl_rumble_hd(int side, const float value[4]) {
 /* (longshot) the game is over: RenHDrum's backends stop and let go of the pads (host/rumble_renhdrum.c); hos_main.c calls
    it once nnMain has returned */
 void hos_sdl_vibration_shutdown(void) { rh_shutdown(); }
+
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): how many open pads give input; player's buttons
+   (1 << HOS_PAD_*) and sticks, ORed in and written, 1 when that player has a pad; and that player's vibration (0..1
+   amplitudes, as hos_sdl_rumble), which its plain motors play while the Controls tab's row is on */
+int hos_sdl_pad_players(void) {
+    AcquireSRWLockShared(&state_lock);
+    const int n = state_count;
+    ReleaseSRWLockShared(&state_lock);
+    return n;
+}
+int hos_sdl_pad_player(int player, uint64_t *buttons, int32_t stick[4]) {
+    AcquireSRWLockShared(&state_lock);
+    const int have = player >= 0 && player < state_count && player < MAX_PADS;
+    if (have) *buttons |= player_buttons[player], memcpy(stick, player_stick[player], sizeof player_stick[0]);
+    ReleaseSRWLockShared(&state_lock);
+    return have;
+}
+void hos_sdl_rumble_player(int player, float low, float high) {
+    if (player < 0 || player >= MAX_PADS) return;
+    low = low < 0 ? 0 : low > 1 ? 1 : low;
+    high = high < 0 ? 0 : high > 1 ? 1 : high;
+    InterlockedExchange(&rumble_of[player][0], (LONG)(low * 65535));
+    InterlockedExchange(&rumble_of[player][1], (LONG)(high * 65535));
+}

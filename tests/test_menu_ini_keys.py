@@ -38,6 +38,7 @@ FROZEN = {   # (a key: the value its row saves, as players' files hold them)
     "damage_taken": "&opts.damage_taken",
     "debug_tools": "&opts.debug_tools",
     "depth_of_field": "&opts.dof",   # (inhale: this game's Depth of field, gpu/vk/menu/kirby_dof.cpp)
+    "pad_per_player": "&opts.pad_per_player",   # (inhale: One controller per player, gpu/vk/menu/kirby_coop.cpp)
     "drift_correction": "&opts.input_replay_sync",
     "descriptor_reuse": "&opts.descriptor_reuse",
     "disable_camera_centering": "&opts.disable_camera_centering",

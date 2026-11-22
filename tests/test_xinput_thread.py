@@ -104,6 +104,8 @@ int hos_sdl_pads(uint64_t *buttons, int32_t stick[4], int *deck_builtin_input) {
     (void)buttons; (void)stick; (void)deck_builtin_input;
     return 0;
 }
+int kirby_npad_split(void) { return 0; }   /* (inhale: host/kirby_npad.c's row off, as upstream has it) */
+int hos_sdl_pad_player(int player, uint64_t *buttons, int32_t stick[4]) { (void)player, (void)buttons, (void)stick; return 0; }
 static void binds_load(void) {}
 static SRWLOCK pad_bind_lock = SRWLOCK_INIT;
 static int pad_bind[HOS_KEY_N][2] = {[HOS_KEY_TOGGLE_HUD] = {-1, -1}};

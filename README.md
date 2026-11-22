@@ -27,7 +27,7 @@ Early. One player has played it by hand on Linux; the Windows installer has been
 | Later worlds | ❓ Not played yet |
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies, keyboard and saves | ✅ Work |
-| Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play |
+| Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new, not yet tried with two controllers |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
@@ -98,6 +98,13 @@ memory), **High** 2800 (about 47 MB), **Highest** 4096 (about 101 MB). **Auto**,
 graphics card's memory: the game's size on 4 and 6 GB, High on 8 GB, Highest on 12 GB or more. The game softens its
 shadows' edges, so the gain is small: edges a little tighter. On an RX 7900 XTX at 3840 x 2160, Highest costs about
 0.5 ms of GPU time a frame over the game's size. The handheld profile keeps the game's own size.
+
+**Local co-op.** Every controller plays as the first player unless **Controls, One controller per player** is on. With
+it on, each controller is a player of its own, in the order the controllers were connected, and the game's Play Co-op
+counts them: the first controller is the first player, with the keyboard and mouse, the second controller the second
+player, and so on. A controller unplugged moves the players after it up one. Vibration goes to each player's own controller, except on controllers that play HD rumble (a Switch
+Pro Controller, Joy-Con) or a DualSense's haptics, which still feel every player's. Motion controls follow the
+controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
 
 **Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other screen. The game's dynamic resolution is off, so the size stays fixed; set the

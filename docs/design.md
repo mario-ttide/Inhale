@@ -1924,3 +1924,33 @@ bias of +64. Until a draw has said, the margin is upstream's. `tests/test_equal_
 margin out and runs draws through it, both ways. The same walk with `RX_VK_EQ_BIAS=64` and the fix draws frame 4800 as
 the run without the margin does.
 On the i7-1365U (Iris Xe, Mesa ANV), the `nightly` build of 2964a28 draws Kirby and the enemies with no switch set.
+
+### 2026-11-22: issue #16, local co-op with one controller for each player
+
+Every controller drove Npad No.1. Upstream's `host/pad_sdl.c` ORs every SDL pad's buttons into one state and keeps
+the strongest stick of all of them; `host/nn_hid.c` `pads_read` ORs XInput's slots in, `npad_states` gives input only
+to id 0 (every other id reads as not connected), `GetNpadStyleSet` answers FullKey for No.1 alone and
+`ShowControllerSupport` always answers one player. The game reads No.1 to No.4 and Handheld at the title (each id is
+logged once, `hid: the game reads npad ...`), and its Play Co-op asks the applet: it said only one controller was
+connected.
+
+The Controls tab's **One controller per player** (`opts.pad_per_player`, `HOS_OPT_PAD_PER_PLAYER` 1001,
+`gpu/vk/menu/kirby_coop.cpp`) turns each controller into a player. The open pads that give input are the players in
+their slots' order (`pad_sdl.c` `hos_sdl_pad_player`: a Steam stand-in's motion-only twin is no player). That is the
+order of connection until a pad is unplugged: the players after it move up one, and a pad plugged in then takes the
+lowest free slot. No.1 is the
+first pad with the keyboard, the mouse, the scripts and every toggle as before; No.2 and later read their own pad
+through the same bindings (`host/kirby_npad.c` `kirby_npad_read`), only with the game in front (or the pads let
+through behind other windows) and the Insert menu closed. Each Npad has its own sampling number. The applet answers
+the players connected, at most the game's maximum, one in single mode, with No.1 selected; there is no dialog, so a
+game asking for more players than are connected is told how many there are. Off is the default: a device that reads
+as a second pad (a virtual pad, upstream #1673's held axes) would take the player's own pad to No.2.
+
+Vibration: `vibration_send` hands each handle's value, with its npad id, to `kirby_npad_vibration`, and the plain
+motors of each player's pad play that player's (`pad_sdl.c` `rumble_of`). HD rumble (Switch pads) and RenHDrum's
+backends (DualSense haptics, the Xbox triggers, Steam) keep their one shared value: each of them plays every player's.
+Motion stays the pad used last's (`motion_poll`); XInput, read only when SDL has no pad, stays No.1's.
+
+`tests/test_kirby_npad.py` compiles the applet's and the style set's HLE from `nn_hid.c` with `kirby_npad.c` and
+stand-in pads. Before the change it failed on No.2 not connected and on the applet's one player. Not checked here: a
+played run with two controllers (this PC has none attached); the issue's reporter is asked to try it.

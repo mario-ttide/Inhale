@@ -82,6 +82,14 @@ int hos_control_input(uint64_t *buttons, int32_t stick[4]) {
 static int movie_begins, movie_ends;
 int hos_input_movie_begin(MoviePad *given) { (void)given; movie_begins++; return 0; }
 void hos_input_movie_end(const MoviePad *p) { (void)p; movie_ends++; CHECK(movie_ends == movie_begins); }
+/* (inhale) host/kirby_npad.c with its row off, as upstream has it: No.1 alone connected (tests/test_kirby_npad.py) */
+int kirby_npad_player(uint32_t id) { return id == 0 ? 0 : -1; }
+void kirby_npad_read(int player, uint64_t (*bind)(uint64_t), uint64_t *buttons, int32_t stick[4]) {
+    (void)player, (void)bind, (void)buttons, (void)stick;
+    CHECK(0);
+}
+int64_t kirby_npad_sampling(int player) { (void)player; CHECK(0); return 0; }
+int kirby_npad_split(void) { return 0; }
 static void *at(uint64_t address) { CHECK(address <= 512 - 8); return memory + address; }
 #define GP(a) at(a)
 static void *hos_guest_range(uint64_t a, uint64_t n) { return a <= 512 && n <= 512 - a ? memory + a : NULL; }

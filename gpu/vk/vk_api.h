@@ -151,6 +151,10 @@ enum { HOS_OPT_PAD_SPEAKER_HEADPHONE_VOLUME = 155 };
    another. At 0 gpu/vk/vk_menu.cpp row_shown hides those rows and the Controls page its ocarina notes; never told (a menu
    built alone), they all show. The existing option_set callback: no new member. */
 enum { HOS_OPT_OOT_GAME = 1000 };
+/* (inhale) HOS_OPT_PAD_PER_PLAYER, 1001: the Controls tab's One controller per player, 1 on: each controller its own
+   Npad, for local co-op (host/kirby_npad.c, host/pad_sdl.c); 0, the default, every controller drives No.1. The existing
+   option callback: no new member. */
+enum { HOS_OPT_PAD_PER_PLAYER = 1001 };
 
 /* (longshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of inhale_options.ini):
    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position (the bottom face button first:
