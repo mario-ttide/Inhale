@@ -5487,10 +5487,18 @@ void dynamic_state(VkCommandBuffer cmd, const NvnState& s, const Targets& at, Vk
             blends = (s.color.blend_en >> i & 1) && at.color_format[i] && target_write_mask(p, s, i) &&
                      (blend_factor(b.src_rgb) != VK_BLEND_FACTOR_ONE || blend_factor(b.dst_rgb) != VK_BLEND_FACTOR_ZERO);
         }
+        // (inhale) towards the camera is the way the draws that write depth order: this game draws reversed depth (they test
+        // GREATER_OR_EQUAL), where LESS_OR_EQUAL passed all that is behind, and the ground's colour pass painted over Kirby and
+        // the enemies (issue 15, Iris Xe). Until such a draw has told, the margin is upstream's
+        static std::atomic<int> reversed{0};
+        if (d.dt && d.dw && d.dop != VK_COMPARE_OP_EQUAL && d.dop != VK_COMPARE_OP_NOT_EQUAL && d.dop > VK_COMPARE_OP_NEVER &&
+            d.dop < VK_COMPARE_OP_ALWAYS)
+            reversed.store(d.dop == VK_COMPARE_OP_GREATER || d.dop == VK_COMPARE_OP_GREATER_OR_EQUAL, std::memory_order_relaxed);
         if (eq_bias > 0 && d.dt && !d.dw && d.dop == VK_COMPARE_OP_EQUAL && !blends) {
             d.dop = VK_COMPARE_OP_LESS_OR_EQUAL;
             d.bias_en = VK_TRUE;
             d.bias[0] = -eq_bias, d.bias[1] = 0.0f, d.bias[2] = 0.0f;
+            if (reversed.load(std::memory_order_relaxed)) d.dop = VK_COMPARE_OP_GREATER_OR_EQUAL, d.bias[0] = eq_bias;   // (inhale)
         }
     }
     d.st = stencil && s.ds.st;

@@ -1888,3 +1888,24 @@ then a usual start killed at 22 s into its preparation, then the walk:
 
 The frames hardly differ here (1 over 20.8 ms before, 14 after, all under 23 ms and given to `game`): the cut cache
 still had most of what the walk meets.
+
+### 2026-11-22: issue #15, Kirby and the enemies drawn as a clear shape on Intel Iris Xe
+
+The report: Iris Xe (i5-11320H, TGL GT2, Mesa 26.3.1 ANV), and the same on an i7-1365U with v0.3.1. Kirby and the
+enemies drew as an "invisible filter", the ground seen through them. The logs named no cause: no draw skipped, no error.
+Of the switches tried in turn on the i7-1365U, the first fixed it: `RX_VK_EQ_BIAS=0`.
+
+Cause. On Intel, upstream turns a colour pass that tests depth EQUAL (and does not write it or blend) into
+LESS_OR_EQUAL with a depth bias of -64 (device_policy.h `equal_depth_bias`; tests/test_equal_depth_margin.py has why).
+That is a margin towards the camera only where a smaller depth is nearer. This game draws reversed depth: a run here with
+a temporary log in `dynamic_state` showed its draws that write depth testing GREATER_OR_EQUAL (`dop` 6), the depth range
+0 to 1, and 26 programs whose colour pass tests EQUAL. With LESS_OR_EQUAL such a pass passes everything behind the
+depth already drawn, and the ground's colour pass, drawn after the characters, painted over them. The bug shows on
+any GPU with `RX_VK_EQ_BIAS=64`: in S5's walk (frame 4800) Kirby is cut in half and the enemy is gone.
+
+Fix (`vk_draw.cpp`, `dynamic_state`, marked `(inhale)`): the margin goes the way the draws that write depth order. A
+draw that writes depth with LESS or LESS_OR_EQUAL says smaller is nearer, GREATER or GREATER_OR_EQUAL that larger is;
+EQUAL, NOT_EQUAL, NEVER and ALWAYS say nothing. Under reversed depth, the EQUAL pass becomes GREATER_OR_EQUAL with a
+bias of +64. Until a draw has said, the margin is upstream's. `tests/test_equal_depth_margin_reversed.py` cuts the
+margin out and runs draws through it, both ways. The same walk with `RX_VK_EQ_BIAS=64` and the fix draws frame 4800 as
+the run without the margin does.
