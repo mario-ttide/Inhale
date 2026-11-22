@@ -20,6 +20,8 @@
 #define RH_FREQ_LOW 160.0f          /* the game's own when it sends none */
 #define RH_FREQ_HIGH 320.0f
 #define RH_PADS 8
+#define RH_PLAYERS 8                /* (inhale) a controller for each player (host/kirby_npad.c, issue #16): No.1 to No.8 */
+#define RH_ALL (-2)                 /* (inhale) feed_to: every target, whoever's (the Test vibration row) */
 #define RH_EFFECTS RENHDRUM_DS5_EFFECTS_SIZE   /* a DualSense's effects block: SDL's SendGamepadEffect sends it */
 
 /* ---- RenHDrum, loaded from beside the game by its full path (no folder of ours or PATH searched) ---- */
@@ -146,8 +148,11 @@ static void *usb_pad, *bt_pad, *sv_pad;
    same vibration, the motors' heavy hits a little deeper. Off: it plays as RenHDrum 0.4 did, the speaker at 0 and the
    Bluetooth report the plain 0x32) */
 static volatile LONG hd_on = 1;
-static float last[2][4] = {{0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}, {0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}};
-static uint32_t fed[2];               /* (each side's values sent so far: a trigger's "fresh") */
+/* (inhale) each DualSense path's own copy of what it was fed, for its triggers: with a controller for each player
+   (issue #16) the cable's and Bluetooth's can play two players' vibration */
+static float usb_last[2][4] = {{0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}, {0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}};
+static float bt_last[2][4] = {{0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}, {0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH}};
+static uint32_t usb_fed[2], bt_fed[2];   /* (each side's values sent so far: a trigger's "fresh") */
 /* (each path's two triggers, left then right, made while HD Haptics plays on it; the pad thread updates them) */
 static RenHdcTriTrigger *usb_tri[2], *bt_tri[2];
 static uint32_t usb_seen[2], bt_seen[2];
@@ -159,24 +164,48 @@ static struct {
     RenHdcXboxRumble *xbox;
     RenHdcEngine *engine;
 } pads[RH_PADS];
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): the player each pad is (rh_pad_player), none
+   listed with the Controls tab's row off; and when each player's sides last sent, as at and quiet for the shared one */
+static struct {
+    void *pad;
+    int player;
+} owners[RH_PADS];
+static int64_t at_of[RH_PLAYERS][2];
+static int quiet_of[RH_PLAYERS][2];
+static int owner_of(void *pad) {   /* (lk held) -1: none, the shared stream's */
+    for (int i = 0; pad && i < RH_PADS; i++)
+        if (owners[i].pad == pad) return owners[i].player;
+    return -1;
+}
 
 static int64_t now_us(void) { return hos_now_ns() / 1000; }
 
-static void feed(int side, float al, float fl, float ah, float fh) {   /* (lk held) */
+/* (inhale) who: -1 the shared stream (rh_push), 0 to 7 a player's (rh_push_player), RH_ALL every target; a target
+   takes it when it is who's (owner_of), so with the row off (every pad -1) the shared one reaches all, as upstream */
+#define RH_FOR(pad) (who == RH_ALL || owner_of(pad) == who)
+static void feed_to(int who, int side, float al, float fl, float ah, float fh) {   /* (lk held) */
     const bool right = side == 1;
     const int64_t us = now_us();
-    last[side][0] = al, last[side][1] = fl, last[side][2] = ah, last[side][3] = fh, fed[side]++;
-    if (usb_dsp) rh.dualsense_dsp_set_half_target(usb_dsp, right, al, fl, ah, fh);
-    if (bt_dsp) rh.dualsense_dsp_set_half_target(bt_dsp, right, al, fl, ah, fh);
-    if (sv_dsp) rh.dualsense_dsp_set_half_target(sv_dsp, right, al, fl, ah, fh);
+    if (RH_FOR(usb_pad)) {
+        usb_last[side][0] = al, usb_last[side][1] = fl, usb_last[side][2] = ah, usb_last[side][3] = fh, usb_fed[side]++;
+        if (usb_dsp) rh.dualsense_dsp_set_half_target(usb_dsp, right, al, fl, ah, fh);
+    }
+    if (RH_FOR(bt_pad)) {
+        bt_last[side][0] = al, bt_last[side][1] = fl, bt_last[side][2] = ah, bt_last[side][3] = fh, bt_fed[side]++;
+        if (bt_dsp) rh.dualsense_dsp_set_half_target(bt_dsp, right, al, fl, ah, fh);
+    }
+    if (sv_dsp && RH_FOR(sv_pad)) rh.dualsense_dsp_set_half_target(sv_dsp, right, al, fl, ah, fh);
     /* (the Switch engine has no gain of its own: the strength scales what it is given, for testers' runs) */
     const float g = vibration_gain((int)gain_percent);
     const float sal = al * g > 1.0f ? 1.0f : al * g, sah = ah * g > 1.0f ? 1.0f : ah * g;
     for (int i = 0; i < RH_PADS; i++) {
+        if (!RH_FOR(pads[i].pad)) continue;   /* (inhale) another player's */
         if (pads[i].xbox) rh.xbox_rumble_push_half_sample(pads[i].xbox, us, right, al, fl, ah, fh);
         if (pads[i].engine) rh.engine_push_half_sample(pads[i].engine, us, right, sal, fl, sah, fh);
     }
 }
+#undef RH_FOR
+static void feed(int side, float al, float fl, float ah, float fh) { feed_to(-1, side, al, fl, ah, fh); }   /* (inhale) */
 
 void rh_push(int side, const float v[4]) {
     if (!rh_ok || side < 0 || side > 1 || !v) return;
@@ -187,6 +216,31 @@ void rh_push(int side, const float v[4]) {
     AcquireSRWLockExclusive(&lk);
     at[side] = hos_now_ns(), quiet[side] = 0;
     if (!testing) feed(side, al, fl, ah, fh);
+    ReleaseSRWLockExclusive(&lk);
+}
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): one player's value, to that player's pad alone */
+void rh_push_player(int player, int side, const float v[4]) {
+    if (!rh_ok || player < 0 || player >= RH_PLAYERS || side < 0 || side > 1 || !v) return;
+    float al = v[0], ah = v[2];
+    al = al > 0.0f ? (al < 1.0f ? al : 1.0f) : 0.0f;   /* (also a NaN: 0) */
+    ah = ah > 0.0f ? (ah < 1.0f ? ah : 1.0f) : 0.0f;
+    const float fl = v[1] > 0.0f ? v[1] : RH_FREQ_LOW, fh = v[3] > 0.0f ? v[3] : RH_FREQ_HIGH;
+    AcquireSRWLockExclusive(&lk);
+    at_of[player][side] = hos_now_ns(), quiet_of[player][side] = 0;
+    if (!testing) feed_to(player, side, al, fl, ah, fh);
+    ReleaseSRWLockExclusive(&lk);
+}
+void rh_pad_player(void *pad, int player) {
+    if (!pad) return;
+    AcquireSRWLockExclusive(&lk);
+    int here = -1, room = -1;
+    for (int i = 0; i < RH_PADS; i++) {
+        if (owners[i].pad == pad) here = i;
+        else if (!owners[i].pad && room < 0) room = i;
+    }
+    if (here < 0) here = room;
+    if (player < 0 && here >= 0 && owners[here].pad == pad) owners[here].pad = NULL;   /* (none: not listed) */
+    else if (player >= 0 && here >= 0) owners[here].pad = pad, owners[here].player = player;
     ReleaseSRWLockExclusive(&lk);
 }
 
@@ -200,13 +254,18 @@ void rh_tick(int64_t now, int test, int percent, int usb_percent, int hd) {
     AcquireSRWLockExclusive(&lk);
     if (test) {   /* (the Test vibration row, or a strength just changed: both bands, half the game's top) */
         testing = 1;
-        for (int s = 0; s < 2; s++) feed(s, RH_TEST_AMP, 180.0f, RH_TEST_AMP, RH_FREQ_HIGH), quiet[s] = 0, at[s] = now;
+        for (int s = 0; s < 2; s++) feed_to(RH_ALL, s, RH_TEST_AMP, 180.0f, RH_TEST_AMP, RH_FREQ_HIGH), quiet[s] = 0, at[s] = now;   /* (inhale) every pad */
     } else if (testing) {
         testing = 0;
-        for (int s = 0; s < 2; s++) feed(s, 0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH), quiet[s] = 1, at[s] = 0;
+        for (int s = 0; s < 2; s++) feed_to(RH_ALL, s, 0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH), quiet[s] = 1, at[s] = 0;   /* (inhale) */
+        memset(at_of, 0, sizeof at_of);   /* (inhale) each player's too: their next value plays again */
     }
     for (int s = 0; s < 2; s++)   /* (a side gone quiet: the game stopped sending, and the DSP would hold its value) */
         if (at[s] && !quiet[s] && now - at[s] > RH_STALE_NS) feed(s, 0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH), quiet[s] = 1;
+    for (int p = 0; !testing && p < RH_PLAYERS; p++)   /* (inhale) a player gone quiet: that player's pad alone */
+        for (int s = 0; s < 2; s++)
+            if (at_of[p][s] && !quiet_of[p][s] && now - at_of[p][s] > RH_STALE_NS)
+                feed_to(p, s, 0.0f, RH_FREQ_LOW, 0.0f, RH_FREQ_HIGH), quiet_of[p][s] = 1;
     ReleaseSRWLockExclusive(&lk);
     if (percent != was_percent && (bt_dsp || sv_dsp)) recreate_bt_dsp(percent);
     if ((hd != 0) != was_hd) {
@@ -266,7 +325,7 @@ static void usb_hd_set(int on) {
     uint8_t block[RH_EFFECTS];
     AcquireSRWLockExclusive(&lk);
     tri_pair(usb_tri, on);
-    usb_seen[0] = fed[0], usb_seen[1] = fed[1];
+    usb_seen[0] = usb_fed[0], usb_seen[1] = usb_fed[1];   /* (inhale) the cable's own */
     ReleaseSRWLockExclusive(&lk);
     usb_hd = on;
     usb_speaker_sync();   /* (its speaker level, and the speaker opened or given back) */
@@ -292,6 +351,8 @@ void rh_ds_triggers(void *pad, int64_t now, int left_depth, int right_depth, int
     AcquireSRWLockExclusive(&lk);
     RenHdcTriTrigger **tri = usb ? usb_tri : bt_tri;
     uint32_t *seen = usb ? usb_seen : bt_seen;
+    const uint32_t *fed = usb ? usb_fed : bt_fed;   /* (inhale) what this path was fed (feed_to) */
+    float (*last)[4] = usb ? usb_last : bt_last;
     for (int s = 0; s < 2; s++) {
         if (!tri[s]) continue;
         if (other_held) rh.tri_trigger_note_action(tri[s], ms);   /* (another button held: a posture, or muted) */
@@ -453,7 +514,7 @@ static DWORD WINAPI bt_main(LPVOID unused) {
         const int want = (int)hd_on;
         if (bt_dsp && (want != hd || bt_dsp != set_for)) {   /* (HD Haptics turned on or off, or a new DSP) */
             rh.dualsense_dsp_set_speaker(bt_dsp, want ? RENHDRUM_HD_HAPTICS_SPEAKER_PERCENT : 0);
-            if (want != hd) tri_pair(bt_tri, want), bt_seen[0] = fed[0], bt_seen[1] = fed[1], bt_state_off();
+            if (want != hd) tri_pair(bt_tri, want), bt_seen[0] = bt_fed[0], bt_seen[1] = bt_fed[1], bt_state_off();   /* (inhale) its own */
             /* (going off: one last 0x36 with both triggers Off, then the plain 0x32) */
             if (!want && hd == 1) r = rh.dualsense_dsp_build_bt36_report(bt_dsp, bt_state, 0, report), size = RENHDRUM_DS5_BT36_REPORT_SIZE;
             hd = want, set_for = bt_dsp;

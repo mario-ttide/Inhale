@@ -17,6 +17,11 @@ int rh_load(void);                 /* 1 when RenHDrum is loaded (tried once) */
 const char *rh_why(void);          /* why it is not, when it is not */
 
 void rh_push(int side, const float value[4]);    /* (the game's thread) {amp_low, freq_low, amp_high, freq_high} */
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): the player a pad is, each poll (-1: none, the
+   Controls tab's row off or the pad closed), and one player's value, which that player's pad alone plays; rh_push's
+   then reaches only the pads that are no player's */
+void rh_pad_player(void *pad, int player);
+void rh_push_player(int player, int side, const float value[4]);
 /* each poll: a test's values, a hand gone quiet, the strength, a DualSense's HD Haptics (1 on: the Controls page's) */
 void rh_tick(int64_t now, int testing, int percent, int usb_percent, int hd_haptics);
 /* each poll, for the DualSense whose voice coils play (cable or Bluetooth): its triggers' pull (0 to 255) and whether

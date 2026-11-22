@@ -102,9 +102,10 @@ shadows' edges, so the gain is small: edges a little tighter. On an RX 7900 XTX 
 **Local co-op.** Every controller plays as the first player unless **Controls, One controller per player** is on. With
 it on, each controller is a player of its own, in the order the controllers were connected, and the game's Play Co-op
 counts them: the first controller is the first player, with the keyboard and mouse, the second controller the second
-player, and so on. A controller unplugged moves the players after it up one. Vibration goes to each player's own controller, except on controllers that play HD rumble (a Switch
-Pro Controller, Joy-Con) or a DualSense's haptics, which still feel every player's. Motion controls follow the
-controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
+player, and so on. A controller unplugged moves the players after it up one. Vibration goes to each player's own
+controller, on every kind of controller (HD rumble, a DualSense's haptics, an Xbox controller's triggers). The haptics
+play on one DualSense on a cable and one over Bluetooth: a second DualSense on the same link rumbles with its motors.
+Motion controls follow the controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
 
 **Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other screen. The game's dynamic resolution is off, so the size stays fixed; set the

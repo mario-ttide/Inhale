@@ -9,7 +9,8 @@ compiled with host/kirby_npad.c, stand-ins for the pads of host/pad_sdl.c and fo
 - the row on, one pad or none: one player;
 - the row off (the default), two pads: one player, No.1 alone connected, as upstream has it;
 - No.2's buttons are its own pad's, through the bindings, and its sticks; a third player with no pad reads nothing;
-- vibration for No.2's handle goes to the second pad alone, the louder of its two sides.
+- vibration for No.2's handle goes to the second pad alone, the louder of its two sides; with the row on its value as
+  it is goes to No.2's HD rumble and RenHDrum too (hos_sdl_rumble_hd_player, rh_push_player), with it off to neither.
 
 python -I -B tests/test_kirby_npad.py [--cc gcc]
 """
@@ -60,6 +61,10 @@ int hos_sdl_pad_player(int player, uint64_t *buttons, int32_t stick[4]) {
     return 1;
 }
 void hos_sdl_rumble_player(int player, float low, float high) { rumbled = player, rumble_lo = low, rumble_hi = high; }
+static int hd_player = -1, hd_side = -1, rh_player = -1, rh_side = -1;
+static float hd_v[4], rh_v[4];
+void hos_sdl_rumble_hd_player(int player, int side, const float v[4]) { hd_player = player, hd_side = side, memcpy(hd_v, v, sizeof hd_v); }
+void rh_push_player(int player, int side, const float v[4]) { rh_player = player, rh_side = side, memcpy(rh_v, v, sizeof rh_v); }
 
 @HLE@
 
@@ -115,12 +120,19 @@ int main(void) {
     check(kirby_npad_sampling(1) == 1 && kirby_npad_sampling(1) == 2 && kirby_npad_sampling(2) == 1, "each Npad its own sampling");
 
     const float left[2] = {0.25f, 0.5f}, right[2] = {0.75f, 0.125f};
-    kirby_npad_vibration(3 | 1u << 8 | 0u << 16, 0, left);
-    kirby_npad_vibration(3 | 1u << 8 | 1u << 16, 1, right);
+    const float vl[4] = {0.3f, 150.0f, 0.4f, 300.0f}, vr[4] = {0.6f, 170.0f, 0.1f, 330.0f};
+    kirby_npad_vibration(3 | 1u << 8 | 0u << 16, 0, left, vl);
+    kirby_npad_vibration(3 | 1u << 8 | 1u << 16, 1, right, vr);
     check(rumbled == 1 && rumble_lo == 0.75f && rumble_hi == 0.5f, "No.2's vibration: the second pad, its louder sides");
-    rumbled = -1;
-    kirby_npad_vibration(3 | 5u << 8, 0, left);
-    check(rumbled == -1, "an npad with no pad: no vibration");
+    check(hd_player == 1 && hd_side == 1 && !memcmp(hd_v, vr, sizeof vr), "row on: No.2's value to its HD rumble");
+    check(rh_player == 1 && rh_side == 1 && !memcmp(rh_v, vr, sizeof vr), "row on: No.2's value to RenHDrum's player 2");
+    rumbled = -1, hd_player = rh_player = -1;
+    kirby_npad_vibration(3 | 5u << 8, 0, left, vl);
+    check(rumbled == -1 && hd_player == -1 && rh_player == -1, "an npad with no pad: no vibration");
+    row_on = 0;
+    kirby_npad_vibration(3 | 0u << 8, 0, left, vl);
+    check(rumbled == 0 && hd_player == -1 && rh_player == -1, "row off: No.1's motors, the shared HD and RenHDrum values alone");
+    row_on = 1;
     if (!bad) puts("ok");
     return bad;
 }

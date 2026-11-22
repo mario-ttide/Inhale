@@ -93,6 +93,25 @@ void hos_sdl_rumble_test(void) { __atomic_store_n(&rumble_test_until, hos_now_ns
    that play HD rumble; silence until the game sends one */
 static SRWLOCK hd_lock = SRWLOCK_INIT;
 static float hd_values[2][4] = {{0.0f, 160.0f, 0.0f, 320.0f}, {0.0f, 160.0f, 0.0f, 320.0f}};
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): each player's values (hos_sdl_rumble_hd_player),
+   and its pad's side bytes made from them as the poll makes the shared ones */
+#define HD_IDLE {0.0f, 160.0f, 0.0f, 320.0f}
+static float hd_of[MAX_PADS][2][4] = {
+    {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE},
+    {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE}, {HD_IDLE, HD_IDLE}};
+#undef HD_IDLE
+static void hd_sides_of(int player, int strength, uint8_t side[3][4]) {
+    float hv[2][4], felt[3][4];
+    AcquireSRWLockShared(&hd_lock);
+    memcpy(hv, hd_of[player], sizeof hv);
+    ReleaseSRWLockShared(&hd_lock);
+    hd_rumble_felt(hv[0], felt[0]);
+    hd_rumble_felt(hv[1], felt[1]);
+    hd_rumble_encode(felt[0], strength, side[0]);
+    hd_rumble_encode(felt[1], strength, side[1]);
+    hd_rumble_merge(felt[0], felt[1], felt[2]);
+    hd_rumble_encode(felt[2], strength, side[2]);
+}
 /* (motion) the pad read and its filter (the polling thread's own), then what the game is handed (under state_lock): the
    last HOS_MOTION_HISTORY readings, newest at motion_hist[motion_head]; gyro_status for the menu */
 static HosMotion motion;
@@ -464,6 +483,7 @@ static void pads_poll(void) {
                     hos_log("hid: controller \"%s\" disconnected (SDL)", hos_sdl_pad_name(pads[i].gc));
                     hos_pad_speaker_forget(pads[i].gc);
                     vib_leave(i, now);   /* (longshot) what played its vibration lets go of it first */
+                    rh_pad_player(pads[i].gc, -1);   /* (inhale) no one's now */
                     hos_sdl_pad_close(pads[i].gc);
                     pads[i].gc = NULL;
                     pads[i].rumble_lo = pads[i].rumble_hi = 0;
@@ -643,9 +663,11 @@ static void pads_poll(void) {
                 if (sig != pads[i].input_sig) pads[i].input_sig = sig, pads[i].used_ns = now;
             }
             /* (longshot) what plays its vibration: chosen again each poll (host/vibration.h), then played */
+            rh_pad_player(gc, split ? count - 1 : -1);   /* (inhale) whose vibration RenHDrum plays on it */
             vib_choose(i, mode, now);
             if (pads[i].used_ns >= status_used) status_used = pads[i].used_ns, status_pad = i;
             if (pads[i].vib == VIB_NONE) continue;
+            if (pads[i].vib == VIB_HD && split && !testing) hd_sides_of(count - 1, strength, side);   /* (inhale) its player's */
             if (pads[i].vib == VIB_HD && hd_poll(i, side, now)) continue;   /* (refused: its motors, and chosen again) */
             if (pads[i].vib == VIB_RH_DS_USB || pads[i].vib == VIB_RH_DS_BT) {   /* (their own threads play) */
                 /* (HD Haptics' triggers: how far each is pulled, 0 to 255, and whether another button is held) */
@@ -811,6 +833,15 @@ void hos_sdl_rumble(float low, float high) {
 void hos_sdl_rumble_hd(int side, const float value[4]) {
     AcquireSRWLockExclusive(&hd_lock);
     memcpy(hd_values[side & 1], value, sizeof hd_values[0]);
+    ReleaseSRWLockExclusive(&hd_lock);
+}
+
+/* (inhale) a controller for each player (host/kirby_npad.c, issue #16): one player's value for one side, for that
+   player's pad when it plays HD rumble */
+void hos_sdl_rumble_hd_player(int player, int side, const float value[4]) {
+    if (player < 0 || player >= MAX_PADS) return;
+    AcquireSRWLockExclusive(&hd_lock);
+    memcpy(hd_of[player][side & 1], value, sizeof hd_of[0][0]);
     ReleaseSRWLockExclusive(&hd_lock);
 }
 

@@ -1947,8 +1947,26 @@ game asking for more players than are connected is told how many there are. Off 
 as a second pad (a virtual pad, upstream #1673's held axes) would take the player's own pad to No.2.
 
 Vibration: `vibration_send` hands each handle's value, with its npad id, to `kirby_npad_vibration`, and the plain
-motors of each player's pad play that player's (`pad_sdl.c` `rumble_of`). HD rumble (Switch pads) and RenHDrum's
-backends (DualSense haptics, the Xbox triggers, Steam) keep their one shared value: each of them plays every player's.
+motors of each player's pad play that player's (`pad_sdl.c` `rumble_of`). With the row on it also hands the value as it
+is to that player's HD rumble and RenHDrum (`hos_sdl_rumble_hd_player`, `rh_push_player`); `vibration_send`'s shared
+calls stay, and with the row off they are all that plays.
+
+- HD rumble: `pad_sdl.c` keeps each player's values beside the shared ones (`hd_of`), and the poll encodes a `VIB_HD`
+  pad's side bytes from its own player's (`hd_sides_of`) just before `hd_poll`, the test aside.
+- RenHDrum: the poll tells it whose each pad is (`rh_pad_player`, -1 with the row off or the pad closed). `feed_to`
+  takes who sends: -1 the shared stream, 0 to 7 a player, `RH_ALL` the Test vibration row. A target (the cable's and
+  Bluetooth's DualSense, the Steam grips, each Xbox and Switch engine) takes a value when it is who's, so with the row
+  off every target is -1's and the shared stream reaches all of them, as upstream has it; with it on, only the pads no
+  player owns. Each player's sides go quiet on their own (`at_of`, `quiet_of`), so player 2 stopping silences player
+  2's pad alone. The DualSense triggers read their own path's copy of what it was fed (`usb_last`/`usb_fed`,
+  `bt_last`/`bt_fed`), not one shared copy, since the cable and Bluetooth can play two players.
+- The limit stays: RenHDrum drives one DualSense on a cable, one over Bluetooth and one Steam Controller. A second one
+  on the same link already plays its motors (`vib_choose`), and those are per player.
+
+`tests/test_rumble_per_player.py` cuts RenHDrum's routing and `pad_sdl.c`'s per-player HD values and runs them with
+stand-ins for RenHDrum's calls: player 2's value reaches its engine alone, the shared one every target with the row off,
+a quiet player is silenced alone, the test reaches every pad.
+
 Motion stays the pad used last's (`motion_poll`); XInput, read only when SDL has no pad, stays No.1's.
 
 `tests/test_kirby_npad.py` compiles the applet's and the style set's HLE from `nn_hid.c` with `kirby_npad.c` and

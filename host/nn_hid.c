@@ -1878,8 +1878,8 @@ static void vibration_send(uint64_t handle, uint64_t value) {
     memcpy(v, GP(value), sizeof v);
     const int dev = (G32(handle) >> 16) & 1;
     rumble_map(v, amp[dev]);
-    void kirby_npad_vibration(uint32_t handle, int dev, const float amp[2]);   /* (inhale) that player's pad's: kirby_npad.c */
-    kirby_npad_vibration(G32(handle), dev, amp[dev]);
+    void kirby_npad_vibration(uint32_t handle, int dev, const float amp[2], const float v[4]);   /* (inhale) that player's pad's: kirby_npad.c */
+    kirby_npad_vibration(G32(handle), dev, amp[dev], v);
     {   /* (longshot) what the game asks for: the first values, then a count now and then */
         static long long n, strong;
         static float peak;

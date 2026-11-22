@@ -12,9 +12,10 @@
    controller drives No.1. Off by default because a second device that reads as a pad (a virtual one, a Steam stand-in's
    twin, upstream #1673) would otherwise take the player's own pad to No.2 and leave No.1 to it.
 
-   Each player's vibration goes to that player's pad when the plain motors play it; HD rumble and RenHDrum's backends
-   still play every player's (host/pad_sdl.c). Motion stays the pad used last's. XInput's pads, read only when SDL has
-   none, stay No.1's. */
+   Each player's vibration goes to that player's pad alone, on every backend: the plain motors, HD rumble (host/pad_sdl.c)
+   and RenHDrum's (host/rumble_renhdrum.c rh_pad_player); RenHDrum still drives one DualSense on a cable, one over
+   Bluetooth and one Steam Controller, and a second one on the same link plays its motors. Motion stays the pad used
+   last's. XInput's pads, read only when SDL has none, stay No.1's. */
 #include <stdint.h>
 #include <string.h>
 #include "../gpu/vk/vk_api.h"
@@ -24,6 +25,8 @@ void hos_log(const char *fmt, ...);
 int hos_sdl_pad_players(void);   /* (pad_sdl.c: the open pads that give input) */
 int hos_sdl_pad_player(int player, uint64_t *buttons, int32_t stick[4]);
 void hos_sdl_rumble_player(int player, float low, float high);
+void hos_sdl_rumble_hd_player(int player, int side, const float value[4]);
+void rh_push_player(int player, int side, const float value[4]);   /* (host/rumble_renhdrum.c) */
 
 enum { KIRBY_NPADS = 8 };   /* (No.1 to No.8, ids 0 to 7) */
 
@@ -66,13 +69,17 @@ void kirby_controller_support(const uint8_t *arg, uint8_t *result) {
                             single ? ", single mode" : "", n);
 }
 
-/* nn_hid.c vibration_send: amp, one side's (dev 0 left, 1 right) low and high motors from the game's value, to the pad
-   of the npad in handle ({u8 style, u8 npad id, u8 device, u8}) */
-void kirby_npad_vibration(uint32_t handle, int dev, const float amp[2]) {
+/* nn_hid.c vibration_send: amp, one side's (dev 0 left, 1 right) low and high motors from the game's value v, to the pad
+   of the npad in handle ({u8 style, u8 npad id, u8 device, u8}); v as it is too, for HD rumble and RenHDrum, with the
+   row on (off, they play the shared one nn_hid.c sends them) */
+void kirby_npad_vibration(uint32_t handle, int dev, const float amp[2], const float v[4]) {
     static float of[KIRBY_NPADS][2][2];
     const int player = kirby_npad_player(handle >> 8 & 0xff);
     if (player < 0) return;
     memcpy(of[player][dev & 1], amp, sizeof of[0][0]);
     const float *l = of[player][0], *r = of[player][1];
     hos_sdl_rumble_player(player, l[0] > r[0] ? l[0] : r[0], l[1] > r[1] ? l[1] : r[1]);
+    if (!kirby_npad_split()) return;
+    hos_sdl_rumble_hd_player(player, dev & 1, v);
+    rh_push_player(player, dev & 1, v);
 }
