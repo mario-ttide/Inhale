@@ -1909,3 +1909,4 @@ EQUAL, NOT_EQUAL, NEVER and ALWAYS say nothing. Under reversed depth, the EQUAL 
 bias of +64. Until a draw has said, the margin is upstream's. `tests/test_equal_depth_margin_reversed.py` cuts the
 margin out and runs draws through it, both ways. The same walk with `RX_VK_EQ_BIAS=64` and the fix draws frame 4800 as
 the run without the margin does.
+On the i7-1365U (Iris Xe, Mesa ANV), the `nightly` build of 2964a28 draws Kirby and the enemies with no switch set.
