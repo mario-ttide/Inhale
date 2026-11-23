@@ -21,18 +21,20 @@ the graphics are redrawn with Vulkan. It is a work in progress.
 
 Early. One player has played it by hand on Linux; the Windows installer has been tested on one PC.
 
+v0.4.0 drew the scene black in play, on every graphics card (issues #18 and #19), and was withdrawn: use v0.4.1.
+
 | What | Status |
 |---|---|
 | Opening, title screen, the first world's stages and its boss, several special stages | ✅ Played through, at 60 fps |
 | Later worlds | ❓ Not played yet |
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies, keyboard and saves | ✅ Work |
-| Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.0, not yet tried with two controllers |
+| Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
 | AMD cards on Windows | ⚠️ One tried, a Radeon 780M (integrated): v0.2.0 draws coloured discs over the picture there. Fixed in v0.3.0, checked on that card in the first stage only |
-| Intel cards | ⚠️ Iris Xe on Linux (Mesa) tried. Up to v0.3.1, Kirby and the enemies were drawn as clear shapes there. Fixed in v0.4.0 |
+| Intel cards | ⚠️ Iris Xe on Linux (Mesa) tried. Up to v0.3.1, Kirby and the enemies were drawn as clear shapes there. Fixed in v0.4.1 |
 | Cards without mesh shaders (such as NVIDIA GTX 10 and AMD RX 5000) | ⚠️ Should run through a slower compute path (upstream's). Not tried with this game |
 
 ## Install and play
