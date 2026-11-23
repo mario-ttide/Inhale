@@ -72,6 +72,9 @@ for the signature only; none of its text is copied.
   fork's to repair. A check of this fork that names Longshot's text (`nx2/test_kirby_far.py` names the lift's call)
   breaks when Longshot rewords it: repair the check.
 - With the game's files at hand, the lift and a build (`README.md`): the checks run no game.
+- Then the [verify skill](../verify/SKILL.md): S5's walk on every GPU, its shots compared with the last good build's.
+  A sync brings upstream's new defaults, laid out for its game: the v3.1.1 sync's guest page table loads drew this
+  game's scene black on every GPU, and every check passed (issues #18 and #19).
 
 ## 6. Sort out what arrived
 

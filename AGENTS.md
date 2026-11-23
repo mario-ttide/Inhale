@@ -10,6 +10,9 @@ calls. It is a fork of Longshot (`PROVENANCE.md`), and most of the code is still
 - [CONTRIBUTING.md](CONTRIBUTING.md) applies to agents as to everyone.
 - **Fixing a bug:** follow the [fix-with-test skill](.claude/skills/fix-with-test/SKILL.md).
 - **Bringing Longshot's later changes over:** follow the [sync-upstream skill](.claude/skills/sync-upstream/SKILL.md).
+- **Before a push, and before a release:** follow the [verify skill](.claude/skills/verify/SKILL.md), a headless
+  walk on this PC's GPUs with its shots compared (before a release, the Windows PC's too). The checks cannot see a
+  picture.
 
 ## Following Longshot
 
