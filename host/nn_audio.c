@@ -66,7 +66,7 @@ enum { K_VOICE = 1, K_MIX, K_SPLITTER, K_SINK, K_POOL, K_EFFECT, K_CONFIG, K_AUX
 enum { FMT_INVALID, FMT_PCM8, FMT_PCM16, FMT_PCM24, FMT_PCM32, FMT_FLOAT, FMT_ADPCM };
 enum { PLAY_STARTED, PLAY_STOPPED, PLAY_PAUSED };
 enum { DEST_NONE, DEST_MIX, DEST_SPLITTER };
-typedef struct { uint64_t buffer, size; int32_t start, end; int loop; uint64_t context; int source; } WB;
+typedef struct { uint64_t buffer, size; int32_t start, end; int loop; uint64_t context; int source; int eos; } WB;   /* (inhale) eos */
 
 typedef struct {
     int used, released, final_mix, buffers;    /* (released: by the game, until the next update applies it) */
@@ -104,6 +104,7 @@ typedef struct {
     uint64_t rel[MAX_REL];                     /* released, for GetReleasedWaveBuffer */
     int nrel, nrel_seen;                       /* (seen: the first nrel_seen, released by the last update) */
     int64_t played;
+    int64_t played_seen;                       /* (inhale) played as of the last update: GetVoicePlayedSampleCount */
     int64_t pos;                               /* sample frame within the current wave buffer */
     int started_wb;                            /* the current one's start was set up */
     double frac;
@@ -191,6 +192,7 @@ static WB read_wb(uint64_t p) {
     w.start = (int32_t)G32(p + 0x10);
     w.end = (int32_t)G32(p + 0x14);
     w.loop = *(uint8_t *)GP(p + 0x18);
+    w.eos = *(uint8_t *)GP(p + 0x19);   /* (inhale) see next_source_frame */
     w.context = G64(p + 0x20);
     w.source = -1;
     return w;
@@ -302,6 +304,10 @@ static int next_source_frame(Voice *v) {
         }
         /* this buffer is done: released for the game */
         release_wb(v, v->wb[0]);
+        /* (inhale) and an end-of-stream one starts the played count again, as the console's renderer does: this game's
+           sound engine flags every buffer and takes the count from the start of the buffer it is on (docs/design.md,
+           "music after a boss"). The ADPCM history is kept: its streamed buffers after the first carry no context. */
+        if (w.eos) v->played = 0;
         memmove(v->wb, v->wb + 1, (size_t)(v->nwb - 1) * sizeof v->wb[0]);
         memmove(v->wbc, v->wbc + 1, (size_t)(v->nwb - 1) * sizeof v->wbc[0]);
         v->nwb--;
@@ -1501,6 +1507,7 @@ static void apply(const Cmd *k) {   /* (with the lock held) */
                 memset(v->prev, 0, sizeof v->prev);
                 memset(v->cur, 0, sizeof v->cur);
                 v->yn1 = v->yn2 = 0;
+                v->played = 0;   /* (inhale) as on the console: a voice started again counts from 0 */
             }
             if (k->i0 == PLAY_STARTED && v->state != PLAY_STARTED) v->snap = 1;
             v->state = k->i0;
@@ -1595,6 +1602,7 @@ static void commit(void) {   /* (with the lock held) */
     for (int i = 0; i < ncmds; i++) apply(&cmds[i]);
     ncmds = 0;
     for (int i = 0; i < MAX_VOICES; i++) voices[i].nrel_seen = voices[i].nrel;   /* (the finished buffers, to the game) */
+    for (int i = 0; i < MAX_VOICES; i++) voices[i].played_seen = voices[i].played;   /* (inhale) and the count, with them */
 }
 
 /* The mixer's next deadline. `next` was the one just woken for; one frame is `period` later, on that same grid.
@@ -2355,7 +2363,7 @@ HLE(_ZN2nn5audio18GetWaveBufferCountEPKNS0_9VoiceTypeE) {
 HLE(_ZN2nn5audio25GetVoicePlayedSampleCountEPKNS0_9VoiceTypeE) {
     au_lock();
     Voice *v = voice_of(ARG(0));
-    RET(v ? v->played : 0);
+    RET(v ? v->played_seen : 0);   /* (inhale) of the last update, as the released buffers */
     au_unlock();
 }
 HLE(_ZN2nn5audio20IsVoiceDroppedFlagOnEPKNS0_9VoiceTypeE) { RET(0); }

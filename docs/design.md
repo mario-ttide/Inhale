@@ -2221,3 +2221,61 @@ What a real 120 or 144 would take:
 
 Not checked: whether the vsyncs-a-frame count (1 here) ever scales the game's step, as the Switch 1 30 fps mode
 would need. The experiment's sound was not heard either: `HOS_AUDIO=0`.
+
+### 2026-11-23: issues #23, #11 and #17, music after a boss
+
+The reports: the boss music keeps playing after the boss is beaten (#23, v0.4.1 too); after a mini boss the level
+music does not come back until Kirby leaves the room (#11); the music glitches in one scene (#17, a video, the scene
+not named). All three are a change of music: one stream ends or fades, the next one starts.
+
+What the game does with its voices (`host/nn_audio.c`, a temporary trace under `HOS_AUDIO_TRACE` of every append,
+start, stop and played count read; S5's walk, title to file select and on, audio on and dumped):
+
+- **Every wave buffer it appends has `isEndOfStream` (@0x19) set**: 807 of 807 in a 120 s walk. The title's
+  `.bfstm` is six mono DSP-ADPCM voices fed 14336-sample blocks every 0.3 s; only the first block of each voice carries
+  an ADPCM context. The menu's music is two buffers on each voice: the whole track, then its loop part looping.
+- A stream that ends is faded (voice volume to 0.07) and its voices released, not stopped; no voice was stopped and
+  started again without being acquired again (no "start with a count above 0").
+- The engine reads `GetVoicePlayedSampleCount` from one place, `0x805a2360` (lr `0x805a2364`), for each voice
+  (`x20`, the `VoiceType` at `+0x20`): position = the start of the buffer it is on (`[x20+0xc8]+0x18`) + the count,
+  the count taken modulo the loop length when that buffer loops (`+0x30`), stored at `[x20+0xb8]`. That sum is right
+  only if the count starts again with each buffer, which is what the console's renderer does after an end-of-stream
+  buffer (and at Stop).
+
+Ours counted from the voice's acquisition, so every position after the first buffer was wrong. Measured with a
+temporary trace of the stored position, the same walk with the old count and the new
+(`work/runs/music23/a10.txt`, `a9.txt`):
+
+- the title's streamed blocks: old 48000, 96240 ... 337200 inside a 14336-sample block; new 4992, 10224, 1120 ...,
+  always inside it;
+- the menu's loop part (start 384006, end 1113606): old 809526 where the track was at about 425760, off by the first
+  buffer's length modulo the loop for as long as it played; new (another track, loop 240002 to 1200002) 338880 =
+  240002 + 98878 played since the switch, then wrapping at the loop's end.
+
+The music still sounded the same (the mixer never used the count; RMS by 4 s windows matches before and after,
+`work/runs/music23/a2.txt`, `a4.txt`), but the engine's idea of where each stream is was wrong. A music change that
+waits for a stream's position (an end, a loop point, a fade to its end) is where that shows. That is the likely
+link to the three reports. No scripted run reaches a boss, so this is not proven.
+
+Fix (`host/nn_audio.c`, each line marked `(inhale)`):
+
+- `read_wb` reads `isEndOfStream`; a finished non-looping buffer with it sets the count to 0.
+- Stop (as the update applies it) sets the count to 0, as on the console; not seen used by this game, which acquires a
+  voice again for each sound.
+- `GetVoicePlayedSampleCount` answers the count as of the last update (`played_seen`, set in `commit` with the
+  released buffers): the engine reads the count and the released buffers from the same update, and a buffer the mixer
+  finished in between would otherwise show a count restarted with the old buffer still current.
+- The ADPCM history is not reset at an end-of-stream buffer: the title's blocks after the first carry no context, and
+  a reset would click at each.
+
+`tests/test_audio_voice_played_count.py` cuts `read_wb`, `next_source_frame`, `apply`, `commit` and the voice calls and
+plays authored buffers: plain buffers count on, an end-of-stream buffer restarts the count at its end, the count is the
+last update's, a looping buffer counts on, Stop restarts it, Pause keeps it. Before the fix it printed
+`FAIL:96 played() == 5 (69, not 5)`; each of the three changes undone fails it. `tests/run_all.py --strict` with both
+header folders: 795 passed, 0 failed, 11 skipped.
+
+Not checked: a boss (#23), a mini boss (#11) and #17's scene, which only a player's run reaches; the Opus streams of the
+stages (the walk reaches only the title's `.bfstm` and the menu's music; the Opus voices go through the same call).
+Helpers in `work/runs/music23/`: `run.sh <name> <seconds>` (a build of the tree, headless, audio muted and dumped to
+`<name>.wav`, the trace on), `sessions.py <log>` (each voice's acquisitions, appends and states), `rms.py <wav>`,
+`dis.py <image dir> <hex address> <count>` (capstone on `work/sa/image`), `temp_trace.diff` (the trace).
