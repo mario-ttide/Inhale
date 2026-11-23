@@ -2101,3 +2101,44 @@ monitor's shape, which this game now takes. They drew it right, as did a 3440 x 
 
 Not checked: a real 21:9 or 32:9 screen, a window (the runs are headless), stages past S5's walk,
 the save and photo pictures (whether a picture the game takes of the scene is now wider), and how a 32:9 HUD reads.
+
+### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
+
+The reporter has a 144 Hz screen. They find frame generation's ghosting too strong and ask for a real frame rate above 60.
+Only research was done: the game's loop paces itself, its logic is a fixed 1/60 s step a frame, and no single time
+value could be changed in its place.
+
+**The game's own limiter.** At the end of a frame the main loop (`f_806737e0`, main+0x6537e0) waits until a number of
+periods of 16 666 666 ns have passed since its start tick (`[x19+0x50]`). That number is its frame count (`[x19+0x64]`)
+times the vsyncs a frame (`[x19+0x10]`, `+0x24` or `+0x3c`, chosen by the mode at `+0x60`; 1 here). It waits with
+`SleepThread(10 us)` and `GetSystemTick` in a loop (main+0x659d48 to main+0x659dec). The period is written into the code
+(`mov`/`movk` of `0xfe502a`, and its negative as `0xff01afd6`) in four copies of that wait in the same function: eight
+loads of the period and four of the negative. The host's `HOS_FPS_MAX` or Game frame rate cap only speeds up the vsync
+ticker and the window acquire (`host/nn_vi.c`). With `HOS_FPS_MAX=120` the game still presents 60.0 a second and spins in
+the wait: `HOS_TICK_LOG=1` counts 55 373 tick reads in 5 s at main+0x659d54 and main+0x659d68, against 966 at 60
+(`work/runs/fps1/tick60.txt`, `tick120.txt`). This is why "a cap of 120 still gives 60" (above, the in-game menu).
+
+**Logic is one fixed step a frame.** In an experiment (the lifted C edited by hand, then restored, not kept) the twelve
+period loads were set to 8 333 333 ns. With `HOS_FPS_MAX=120` the game then presented a steady 120.0 a second
+(`lim120.txt`, `lim120s.txt`), and the per-frame tick readers (main+0x6594e4 and three more) went from 300 to 600 in 5 s.
+The game ran at twice its speed. S5's walk on the frame clock (`HOS_INPUT_FRAME_CLOCK=1`), shot every 600 presents,
+matched a normal 60 fps walk (`ref60s.txt`) at the same present number, not at the same time. Mean differences were
+1.5 to 4.3 of 255 from present 600 to present 6600, and present 3600 was the same scene at 30 s as at 60 s
+(`work/runs/fps1/shots120p`, `shots60`). The step is also written into the code: about 50 places build the float 1/60
+(`0x3c888889`, as `movk ... 0x3c88, lsl 16`). There are frame counters as well, such as the far-object one at `+0x3f4`
+("far objects at 30 and 15 updates a second", above). Upstream's way does not apply here. Its game reads one frame step
+from a time object, so upstream sets that one value to the frame's real time (`realtime_step`, `host/oot_high_fps.h`).
+This game has no such value, so a faster loop is a faster game.
+
+What a real 120 or 144 would take:
+- **Interpolation.** Logic would stay at 60. Each in-between display frame would draw the scene again with camera and object
+  transforms blended between two logic frames. That needs the game's draw split from its update in `f_806737e0`, and
+  the transforms found. One way is a pass that draws only. The other is to blend the matrices in the uniform buffers that
+  the renderer replays. Neither was tried. Both are large, and both need the HUD, the particles and the skinned
+  models handled one by one.
+- **Half steps.** Every 1/60 constant, frame counter and frame-counted timer would be scaled. That is about 50 constant
+  sites, besides the counters, and integer counters cannot take half a step. Not practical.
+- **Frame generation** stays the way to fill a 144 Hz screen. Its ghosting in this game was not looked at.
+
+Not checked: whether the vsyncs-a-frame count (1 here) ever scales the game's step, as the Switch 1 30 fps mode
+would need. The experiment's sound was not heard either: `HOS_AUDIO=0`.
