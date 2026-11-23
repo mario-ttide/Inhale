@@ -2165,6 +2165,17 @@ static int game_main(int argc, char **argv) {
         setenv("RX_VK_PIPE_SKIP", "0", 1);
 #endif
     }
+    /* (inhale) Global loads search the storage buffers, unless the player set the switch (issues #18 and #19). The
+       renderer's default reads them through the guest page table alone, whose windows are laid out for upstream's game
+       (gpu/vk/page_table_census.h kPageWindows); this game's pools lie outside them, so those loads read 0 and the
+       opaque scene drew black on every GPU (tests/test_kirby_gp_table.py) */
+    if (!getenv("RX_VK_GP_TABLE")) {
+#ifdef _WIN32
+        _putenv("RX_VK_GP_TABLE=0");
+#else
+        setenv("RX_VK_GP_TABLE", "0", 1);
+#endif
+    }
     {
         const char *protect_hearts = getenv("HOS_OOT_PROTECT_HEARTS");
         hos_oot_protect_hearts = protect_hearts && !strcmp(protect_hearts, "1");

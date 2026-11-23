@@ -1972,3 +1972,34 @@ Motion stays the pad used last's (`motion_poll`); XInput, read only when SDL has
 `tests/test_kirby_npad.py` compiles the applet's and the style set's HLE from `nn_hid.c` with `kirby_npad.c` and
 stand-in pads. Before the change it failed on No.2 not connected and on the applet's one player. Not checked here: a
 played run with two controllers (this PC has none attached); the issue's reporter is asked to try it.
+
+### 2026-11-23: issues #18 and #19, the scene black in play (v0.4.0)
+
+The reports: v0.4.0 on an RTX 3050 Laptop (NVIDIA 610.64, Windows 11) and an RTX 5080. The title, the movies and the
+pause menu drew; in play only the HUD, the particles and the dithered transparent draws showed. The renderer logged no
+error, but many lines `vk: page table: pool … is outside its windows: a pointer into it that no bound buffer holds
+reads 0`.
+
+Not NVIDIA's: S5's walk on this PC's RX 7900 XTX (RADV) drew the same, from frame 600 (the title's blue background is
+gone too). `RX_VK_GP_TABLE=0` brought every frame back.
+
+Cause. The v3.1.1 sync brought upstream's default `graphics_table_loads` (`gpu/vk/vk_coopmat.cpp` `table_loads_wanted`,
+`RX_VK_GP_TABLE=1`): the vertex, fragment and compute stages read global memory through the guest page table alone,
+not by searching the bound storage buffers. The table covers three windows laid out for upstream's game
+(`gpu/vk/page_table_census.h` `kPageWindows`: 64-72 GB, 496-512 GB, 1 TB). This game's pools lie elsewhere, near 2 GB
+and between 482 and 492 GB (the census lines), so every load through the table read 0: vertex and lighting data among
+them. On any GPU with host memory import and buffer device addresses, which is all of the tested ones.
+
+Fix (`host/hos_main.c`, marked `(inhale)`, beside the `RX_VK_PIPE_SKIP` default): `RX_VK_GP_TABLE=0` unless the player
+set it, the storage buffer search of v0.3.1. Moving the windows to this game's pools would also do, but the window
+bases are written into the shaders (`spirv_emit_context.cpp` `kGuestPagesBase*`) and into upstream's files around them.
+`tests/test_kirby_gp_table.py` cuts the defaults after `hos_options_choose` and `table_loads_wanted`, and checks the
+switch the renderer takes: before the fix it printed `FAIL: RX_VK_GP_TABLE unset: the renderer takes 1, wanted 0`.
+S5's walk with the fix draws every frame on the 7900 XTX and the Ryzen 7900X's iGPU (RADV), as `RX_VK_GP_TABLE=0` does.
+On the Windows PC (Windows 11) the same walk was compared with v0.3.1's, shot by shot
+(`scripts/kirby_shot_compare.py`): on the RTX 2080 SUPER (NVIDIA 621.24, #19's driver) the fixed build differs by at
+most 18 of 255 in a frame and `RX_VK_GP_TABLE=1` by 50 to 130 in every frame, the scene black as in #18; on the
+Radeon 780M (AMD 26.11.2) the fixed build differs by at most 9.
+
+Why the headless runs after the sync did not see it: they counted the fence stalls in the log and nobody looked at the
+shots. `.claude/skills/verify` now makes the shots of each run part of the check.
