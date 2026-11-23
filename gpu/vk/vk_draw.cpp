@@ -83,6 +83,7 @@
 #include "movie_upscale_policy.h"
 #include "skip_code.h"
 #include "kirby_post.h"   // (inhale) the Depth of field row
+#include "kirby_wide.h"   // (inhale) this game's pause background at the picture's width
 #include "driver_faults.h"
 #include "driver_cache_env.h"   // (the drivers' own caches as the environment chooses them, Linux)
 #include "fallback_size_policy.h"
@@ -9462,7 +9463,20 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     }
     {
         FINE_SCOPE(FT_DYN);
+        // (inhale) this game's pause background, a capture of the whole picture, keeps the picture's width (kirby_wide.h)
+        static const float wide_ratio = host && host->aspect_ratio ? host->aspect_ratio() : 0.0f;
+        float* const vp = s.viewport[0];
+        const float vp_game[4] = {vp[0], vp[1], vp[2], vp[3]};
+        const auto pane = [&s](float out[4]) {
+            const nvn_p_bind_buf& u = s.ubo[0][0];
+            return u.addr && (!u.size || u.size >= kirby_wide::kPaneAt + 16) && memory_read_as_submitted(u.addr + kirby_wide::kPaneAt, out, 16);
+        };
+        if (const float k = kirby_wide::keep_whole_draw(!menu_oot_rows(), wide_ratio, at, p.key, gfx_sampled(), pane); k > 1.0f) {
+            if (vp[2] == 0.0f && vp[3] == 0.0f) vp[2] = (float)at.width, vp[3] = (float)at.height;
+            kirby_wide::widen(vp[0], vp[2], k);
+        }
         dynamic_state(cmd, s, at, topo, d.mesh && !p.fallback, p);
+        std::memcpy(vp, vp_game, sizeof vp_game);   // (inhale)
     }
     if (trace_tex_hit && texture_frame_no() % 30 == 0) {
         static std::atomic<int> told{0};

@@ -2,13 +2,17 @@
 
 The hook: an aspect of 16:9 in the register becomes hos_wide_ratio, so the projection the game then builds (p00 = p11 /
 aspect, main+0x74dd4c) is the one measured in the game at 21:9 (0.8977 at p11 2.1445); another aspect, or a ratio of 0
-(a 16:9 screen), is left as the game made it. The install: four sites into the lifter's after-code, none for another
+(a 16:9 screen), is left as the game made it. The install: five sites into the lifter's after-code, none for another
 build or code. Also the build id host/hos_main.c lets through (kirby_wide_ok) is the one the lift hooks.
 
 The frustum: the update levels judge an object outside the view by the planes the frustum builder (main+0x627680) makes
 from its s0 (vertical angle) and s1 (aspect). A builder shaped like the game's (the hooks the install put at its first
 instruction, then the side plane from tan(angle / 2) x aspect) must see a sphere beside the 16:9 view but inside a
 32:9 one at 32:9, and not at 16:9.
+
+The HUD and menus: the UI hook (after the ld4 at main+0x85a808, rows in v0 and v1) scales the first row of a projection
+still at 16:9 by 16:9 over the ratio: the layouts' orthographic 1920 x 1080 and their 2.5D camera (2.537, 4.511) at 32:9
+and 21:9; a world camera already at the ratio, a 16:9 screen and a picture narrower than 16:9 are left.
 
     python -I -B tests/test_kirby_wide.py [--cc gcc]
 """
@@ -33,6 +37,7 @@ FIXTURE = r'''
 volatile float hos_wide_ratio;
 const char hos_main_build_id[] = BUILD;
 void kirby_wide_aspect(uint64_t *v);
+void kirby_wide_ui(uint64_t *r0, const uint64_t *r1);
 int kirby_wide_ok(void);
 typedef struct { uint64_t vreg[32][2]; } Ctx;
 /* The builder's start with the lift's after-code at main+0x627680, then one side plane: visible when the sphere's
@@ -46,6 +51,16 @@ static int builder_sees(Ctx *c, float x, float z, float r) {
     return x * cosf(h) - z * sinf(h) < r;
 }
 int main(int argc, char **argv) {
+    if (argc > 1 && !strcmp(argv[1], "ui")) {   /* ui <ratio> <m00> <m11>: the first row after the hook */
+        hos_wide_ratio = (float)atof(argv[2]);
+        float r0[4] = {(float)atof(argv[3]), 0.0f, 0.0f, 0.25f}, r1[4] = {0.0f, (float)atof(argv[4]), 0.0f, 0.0f};
+        uint64_t v0[2], v1[2];
+        memcpy(v0, r0, 16), memcpy(v1, r1, 16);
+        kirby_wide_ui(v0, v1);
+        memcpy(r0, v0, 16);
+        printf("%.6f %.4f\n", r0[0], r0[3]);
+        return 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "frustum")) {
         hos_wide_ratio = (float)atof(argv[2]);
         Ctx c = {{{0}}};
@@ -84,28 +99,34 @@ class Image:
         return self.words.get(a, 0)
 
 
+def game_words(base):
+    """The words of the build the hooks are written for, at each site"""
+    return {**{base + off: old for off, old, _ in kirby_wide.SITES}, base + kirby_wide.UI_SITE[0]: kirby_wide.UI_SITE[1]}
+
+
 def frustum_hook():
     """The C the install puts after the frustum builder's first instruction, as the fixture's statement"""
     base = 0x80020000
     lifter = Lifter()
-    kirby_wide.install(lifter, Image({base + off: old for off, old, _ in kirby_wide.SITES} | {base + 0x627680: 0xd0012be8}),
-                       base, kirby_wide.BUILD_ID)
+    kirby_wide.install(lifter, Image(game_words(base)), base, kirby_wide.BUILD_ID)
     return lifter.after.get(base + 0x627680, "/* no hook */")
 
 
 def install_checks():
     bad = []
     base = 0x80020000
-    good = {base + off: old for off, old, _ in kirby_wide.SITES}
+    good = game_words(base)
     lifter = Lifter()
     lifter.after[base + 0x74dc80] = "/* before */"
-    if kirby_wide.install(lifter, Image(good), base, kirby_wide.BUILD_ID) != 4 or len(lifter.after) != 4:
-        bad.append("install: %d sites, expected 4" % len(lifter.after))
+    if kirby_wide.install(lifter, Image(good), base, kirby_wide.BUILD_ID) != 5 or len(lifter.after) != 5:
+        bad.append("install: %d sites, expected 5" % len(lifter.after))
     if not lifter.after[base + 0x74dc80].startswith("/* before */\n"):
         bad.append("install: the code already after main+0x74dc80 was not kept first")
     for off, _, reg in kirby_wide.SITES:
         if "kirby_wide_aspect(c->vreg[%d])" % reg not in lifter.after.get(base + off, ""):
             bad.append("install: main+%#x does not hand v%d to kirby_wide_aspect" % (off, reg))
+    if "kirby_wide_ui(c->vreg[0], c->vreg[1])" not in lifter.after.get(base + kirby_wide.UI_SITE[0], ""):
+        bad.append("install: main+%#x does not hand v0 and v1 to kirby_wide_ui" % kirby_wide.UI_SITE[0])
     for what, words, build in (("another build", good, "another"),
                                ("another word", {**good, base + 0x80e20c: 0x1e221800}, kirby_wide.BUILD_ID)):
         lifter = Lifter()
@@ -144,10 +165,22 @@ def main():
                                      check=True).stdout.strip()
                 if got != expect:
                     bad.append("build %.8s, frustum at ratio %s: %s, expected %s" % (build, ratio, got, expect))
+            # (ratio, m00, m11) -> m00 and m03 after: the 0.25 in m03 scales with the row
+            for argv, expect in (
+                (("3.555556", "0.0010416667", "0.0018518519"), "0.000521 0.1250"),   # 32:9: the 1920 x 1080 ortho, halved
+                (("3.555556", "2.537270", "4.510710"), "1.268635 0.1250"),           # 32:9: the 2.5D layout camera
+                (("2.388889", "0.0010416667", "0.0018518519"), "0.000775 0.1860"),   # 21:9: by 1.7778 / 2.3889
+                (("3.555556", "1.268635", "4.510710"), "1.268635 0.2500"),           # a world camera at the ratio: left
+                (("0", "0.0010416667", "0.0018518519"), "0.001042 0.2500"),          # a 16:9 screen: left
+                (("1.6", "0.0010416667", "0.0018518519"), "0.001042 0.2500"),        # 16:10: left (the whole width)
+            ):
+                got = subprocess.run([str(exe), "ui", *argv], capture_output=True, text=True, check=True).stdout.strip()
+                if got != expect:
+                    bad.append("build %.8s, UI at ratio %s, m00 %s: %s, expected %s" % (build, argv[0], argv[1], got, expect))
     if bad:
         raise SystemExit("FAIL:\n  " + "\n  ".join(bad))
     print("PASS: 16:9 cameras at 21:9, 32:9 and 16:10, others and a 16:9 screen left; the update levels' frustum as wide;"
-          " 4 sites, none for another build or code")
+          " the UI at its 16:9 shape at 32:9 and 21:9; 5 sites, none for another build or code")
 
 
 if __name__ == "__main__":

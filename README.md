@@ -30,7 +30,7 @@ v0.4.0 drew the scene black in play, on every graphics card (issues #18 and #19)
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies, keyboard and saves | ✅ Work |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
-| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in the next version: the world wider, the HUD and menus stretched. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play) |
+| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in the next version: the world wider, the HUD and menus at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play) |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
@@ -111,8 +111,9 @@ play on one DualSense on a cable and one over Bluetooth: a second DualSense on t
 Motion controls follow the controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
 
 **Ultrawide and other shapes.** On a 21:9 or 32:9 screen the game shows more of the world at the sides, as tall as
-on a 16:9 screen, and the enemies there move as smoothly as in the middle. The HUD, the menus and the movies are made for 16:9, so they are stretched to the screen's width, a
-third wider at 21:9 and twice as wide at 32:9. A 16:10 or 4:3 screen works the same way, and shows less at the sides.
+on a 16:9 screen, and the enemies there move as smoothly as in the middle. The HUD, the menus and the hint
+videos keep their 16:9 shape in the middle of the screen; the pause menu's blurred background covers the whole width. A
+16:10 or 4:3 screen shows less at the sides, and there the HUD and menus fill the width, a little narrower than drawn.
 **Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with
 bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as
 3440 x 1440 or 5120 x 1440. The environment variable `HOS_ASPECT` sets a ratio, such as `HOS_ASPECT=2.3889`.

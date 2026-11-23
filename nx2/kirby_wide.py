@@ -22,7 +22,16 @@ The lead came from Fl4sh9174's 21:9 mod for the Switch 1 game, whose notes say t
 size pair (a mov / movk of 2580 x 1080 in place of 1920 x 1080). That pair has no twin here: each 16:9 size constant of
 this build was rewritten in turn and none moved the cameras (docs/design.md, "issue #20"). Nothing of the mod is copied.
 
-Gated on main's build id and the four words; another build leaves it out, and says so.
+The HUD, menus and prompts: drawn for 16:9 into the 16:9 window texture, which the present stretches to the picture's
+shape. Every 2D layer's camera hands its projection to the view in f_8087a75c (main+0x85a75c): ld4 at main+0x85a808 loads it
+as rows (v0 the first, v1 the second), then main+0x5e28e0 copies them. The layouts' cameras are an orthographic 1920 x
+1080 (2 / 1920, 2 / 1080) and a perspective one of the same 16:9 shape (2.537, 4.511, the 2.5D panes); the world's
+cameras are at the picture's ratio by then. C after the ld4 scales the first row by (16 / 9) / ratio when the second's
+m11 over the first's m00 is still 16 / 9 (host/kirby_wide.c kirby_wide_ui): the UI keeps its shape, in the middle of
+the picture. The pause menu's background is a capture of the whole picture drawn by such a camera; the renderer keeps
+that draw the picture's width (gpu/vk/kirby_wide.h).
+
+Gated on main's build id and the five words; another build leaves it out, and says so.
 """
 
 BUILD_ID = "395fc326c2e5b1651d937074f8cfd75de63184d9"
@@ -33,6 +42,10 @@ SITES = (
     (0x80e20c, 0x1e211800, 0),   # fdiv s0, s0, s1       (c16's aspect: the size's width over its height)
     (0x627680, 0xd0012be8, 1),   # adrp x8, ...          (the frustum builder's first: s1 is its aspect, not yet read)
 )
+# (offset in main, the game's word): a camera's projection as rows in v0 to v3, before the view takes it
+UI_SITE = (0x85a808, 0x4c400900)   # ld4 {v0.4s-v3.4s}, [x8]   (f_8087a75c: the camera's +0x250)
+UI_HOOK = ("{ extern void kirby_wide_ui(uint64_t *r0, const uint64_t *r1); kirby_wide_ui(c->vreg[0], c->vreg[1]); }"
+           "   /* (nx2/kirby_wide.py: the HUD and menus at their 16:9 shape) */")
 
 
 def _hook(reg):
@@ -42,11 +55,12 @@ def _hook(reg):
 
 def install(lifter, img, main_base, build_id):
     """The hooks into lifter.after; returns how many (0 when this is another build or code)"""
-    if build_id != BUILD_ID or any(img.word(main_base + off) != old for off, old, _ in SITES):
+    hooks = [(off, old, _hook(reg)) for off, old, reg in SITES] + [(UI_SITE[0], UI_SITE[1], UI_HOOK)]
+    if build_id != BUILD_ID or any(img.word(main_base + off) != old for off, old, _ in hooks):
         print("wide cameras: unsupported camera code, left out")
         return 0
-    for off, _, reg in SITES:
+    for off, _, text in hooks:
         pc = main_base + off
-        lifter.after[pc] = (lifter.after[pc] + "\n" if pc in lifter.after else "") + _hook(reg)
-    print("wide cameras: the 16:9 aspect at the screen's ratio (%d sites)" % len(SITES))
-    return len(SITES)
+        lifter.after[pc] = (lifter.after[pc] + "\n" if pc in lifter.after else "") + text
+    print("wide cameras: the 16:9 aspect at the screen's ratio, the UI at 16:9 (%d sites)" % len(hooks))
+    return len(hooks)

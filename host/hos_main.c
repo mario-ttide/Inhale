@@ -2464,11 +2464,12 @@ static int game_main(int argc, char **argv) {
             hos_wide_squeeze = (float)fmin(1.0, game / ((double)ow / oh));   /* (a narrower screen: the whole width) */
             hos_wide_margin = (1.0f - hos_wide_squeeze) / 2.0f;
             hos_aspect_ratio = hos_wide_ratio;
-            /* (inhale) this fork's game stretches its HUD, menus and movies with the picture: no middle 16:9, whose sides the
-               renderer would blur in every frame of it (gpu/vk/vk_framegen.cpp wide_sides: it knows the other game's world only) */
-            if (!hos_game_is_oot()) hos_wide_squeeze = 1.0f, hos_wide_margin = 0.0f;
             hos_log("boot: widescreen: picture %ux%u, scene %ux%u, camera ratio %.4f, HUD and movies in the middle %.1f%%", ow, oh, sw, sh,
                     (double)hos_wide_ratio, hos_wide_squeeze * 100.0);
+            /* (inhale) this fork's game narrows its HUD, menus and movies itself (host/kirby_wide.c kirby_wide_ui, from
+               hos_wide_ratio): the renderer is told no middle 16:9, whose sides it would blur in every frame of it
+               (gpu/vk/vk_framegen.cpp wide_sides: it knows the other game's world only) */
+            if (!hos_game_is_oot()) hos_wide_squeeze = 1.0f, hos_wide_margin = 0.0f;
         } else if (want > 1.0f) {
             hos_log("boot: widescreen: a %.4f screen is 16:9: the game's own picture", (double)want);
         }

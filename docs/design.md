@@ -2133,6 +2133,54 @@ ratio 3.555556: 0 1, expected 1 1`.
 
 Not checked: a stage with enemies at the sides (the reporter's), and the cost of more objects at full rate at 32:9.
 
+**2026-11-23, the HUD, menus and movies at their 16:9 shape.** The same report: menus, dialogs, the HUD and the movies
+stretched. They are drawn for 16:9 into the 16:9 window texture, which the present stretches to the picture.
+
+- **Where their projection comes from.** A probe in the renderer of every draw's constants (a temporary edit of
+  `probe_draw`) found the layouts' c3 holding an orthographic 1920 x 1080 (2 / 1920, 2 / 1080), in a ring of constant
+  buffers at `0x7fdd77xxxx`. A hardware watchpoint on one (gdb, host address `0x100000000000` plus the guest's) caught
+  the writer: `f_8061575c` copies a view's matrix there (`f_806029fc` inlined), and the view's (`0x7fc3e11a40`) is set
+  by `f_806028e0` (main+0x5e28e0), called from `f_8087a75c` (main+0x85a75c). That function loads a camera's projection
+  from its +0x250 as rows (`ld4 {v0.4s-v3.4s}, [x8]` at main+0x85a808), hands it to the view, then sets a 1920 x 1080
+  viewport. Every 2D layer's camera passes there, the world's too. The HUD's and the menus' panes are not drawn by the
+  ortho alone: most are 2.5D, a perspective camera of the same 16:9 shape (p00 2.537, p11 4.511, at z -2440, so that a
+  1920 x 1080 plane fills the screen). All the cameras are one class (vtable `0x82bbcf88`), with the same fields but
+  their owner, created by the game's scripts (`f_807eff00`): no screen or vtable to key on.
+- **The change.** C after that `ld4` (`nx2/kirby_wide.py` `UI_SITE`, `host/kirby_wide.c` `kirby_wide_ui`): a projection
+  whose m11 / m00 is still 16:9 on a picture wider than 16:9 has its first row scaled by 16:9 over the ratio. The world's
+  cameras are at the ratio by then and are left. The layouts keep their shape in the middle 16:9 of the picture; the
+  window texture stays 3840 x 2160, so at 32:9 the UI has 1920 of its columns for 2560 of the screen's.
+  `host/hos_main.c` still tells the renderer a squeeze of 1 and no margin: `wide_sides` (`vk_framegen.cpp`) would blur
+  the sides of every frame of this game, as it knows only upstream's world.
+- **What stays whole.** Copy (`272f3b6f806b3a33`, the scene into the window texture) takes no layout projection and is
+  left. The fades checked (the title's to the stage) are full width. The pause menu's background is not: a capture of
+  the whole picture (the frozen scene, cut to 320 x 90 at 5120 x 1440, blurred by `21240c5afa2d2e61`) drawn by
+  `c7974d16c805e580` as a 2.5D pane, so the hook narrowed it and the sides showed the scene unblurred. The HUD's frosted
+  bars and the title's buttons are the same program on the same capture. They differ in the pane: the layout programs'
+  vertex constants (c3 at +528) hold its width, height, left and top (2398 x 1478 at -1199, 739 for the background;
+  228 x 80, 80 x 80 for the bars). In the renderer (`gpu/vk/kirby_wide.h`, one block in `vk_draw.cpp` `draw` around
+  `dynamic_state`), a draw into a 16:9 target that samples a texture the GPU drew in the picture's shape, whose pane
+  covers the whole 1920 x 1080 layout centred, has its viewport widened by the ratio over 16:9 about its centre, while
+  this game runs (`menu_oot_rows()` false). A first rule without the pane widened the frosted bars too: wide ghosts of
+  them beside the HUD and the title's buttons.
+- **Movies.** The hint videos (GuideMovie, 480 x 270) are layout panes and sit with their prompt in the middle 16:9.
+
+| S5's walk and a pause (`work/runs/w20/`) | picture | seen in the shots |
+|---|---|---|
+| `ui3` | 5120 x 1440 | title, HUD and pause menu round in the middle 16:9; the pause blur full width; no ghost |
+| `u21` | 3440 x 1440 (squeeze 74.4%) | the same |
+| `mv` (`HOS_NO_MOVIES=0`) | 5120 x 1440 | the hint video in its box, in the middle |
+
+Tests: `tests/test_kirby_wide.py` (the UI hook at 32:9 and 21:9 on both kinds of camera; a world camera, a 16:9 screen
+and 16:10 left; five sites), `tests/test_kirby_wide_keep.py` (the block cut from `draw` with the header: the background
+widened at 32:9 and 21:9 and the game's viewport given back; a HUD pane, Copy, the other game, 16:9, a texture the GPU
+did not draw, a target not 16:9 left; the pane read only after the cheaper checks).
+
+Not checked: the opening movie (no idle run reached it), dialog boxes, door transitions, the map and the other screens
+that draw a capture (if one draws it as a pane over the whole layout it is widened as the pause's; a smaller pane of a
+capture stays narrowed and samples it at its 16:9 place), 16:10 and 4:3 (the UI is left at the window texture's width
+there, so the stretch narrows it a little), and the HUD at the screen's edges (upstream's `hos_wide_ui.c`), not done.
+
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
 The reporter has a 144 Hz screen. They find frame generation's ghosting too strong and ask for a real frame rate above 60.

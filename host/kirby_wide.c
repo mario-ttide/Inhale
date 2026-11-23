@@ -5,7 +5,8 @@
    nx2/kirby_wide.py hooks (kirby_wide_ok). It then sets hos_wide_ratio to the picture's ratio (2.3889 at 3440 x 1440,
    3.5556 at 5120 x 1440) and the window's shape to it, and the present stretches the game's 16:9 picture to the window
    (gpu/vk/vk_present_rect.h). The hooks give the cameras that ratio in place of 16:9, so what is stretched was drawn for
-   it: the world is wider, and the HUD and menus, drawn for 16:9, are stretched with it. */
+   it: the world is wider. The HUD and menus are drawn for 16:9: kirby_wide_ui narrows their cameras by 16:9 over the
+   ratio, so the stretch gives them back their shape, in the middle of the picture. */
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -22,4 +23,20 @@ void kirby_wide_aspect(uint64_t *v) {
     float a;
     memcpy(&a, v, 4);
     if (r > 0.0f && fabsf(a - 16.0f / 9.0f) < 1e-4f) memcpy(v, &r, 4);
+}
+
+/* A camera's projection as rows (main+0x85a808, nx2/kirby_wide.py UI_SITE): one still at 16:9 (m11 / m00) on a picture
+   wider than 16:9 is a layout's, 2D or 2.5D (the world's are at the picture's ratio by then). Its first row is scaled
+   by 16:9 over the ratio, so the present's stretch gives the layout its own shape in the middle of the picture. A
+   picture narrower than 16:9 keeps the layouts the window texture's width (the stretch narrows them a little) */
+void kirby_wide_ui(uint64_t *r0, const uint64_t *r1) {
+    const float r = hos_wide_ratio;
+    float x[4], m11;
+    if (!(r > 16.0f / 9.0f)) return;
+    memcpy(x, r0, 16);
+    memcpy(&m11, (const uint8_t *)r1 + 4, 4);
+    if (x[0] == 0.0f || fabsf(m11 / x[0] - 16.0f / 9.0f) > 1e-3f) return;
+    const float q = (16.0f / 9.0f) / r;
+    for (int k = 0; k < 4; k++) x[k] *= q;
+    memcpy(r0, x, 16);
 }
