@@ -60,6 +60,8 @@ bool host_screen_size(uint32_t* w, uint32_t* h) {
 namespace mkwvk {
 int up_now = 0;   // (the Upscaler shown: 0 the game's own, 1 DLSS, 2 DLAA)
 int upscaler() { return up_now; }
+bool oot_now = true;   // (inhale: the other game runs, vk_menu.cpp oot_rows; false: this fork's game)
+bool menu_oot_rows() { return oot_now; }
 }
 #include "gpu/vk/upscaler_rows.h"
 #include "gpu/vk/display_modes.h"
@@ -272,6 +274,11 @@ int main(int argc, char **argv) {
         assert(strcmp(tx_output_res(3), "6256x1760") == 0);   // (3840x2160 at 32:9: at most 5120x2160's pixels, host/hos_wide_size.h)
         assert(strcmp(tx_output_res(1), "3840x1080") == 0);
         assert(strcmp(tx_output_res(4), "5120x1440 (native)") == 0);   // (32:9 itself)
+        // (inhale) the Aspect ratio's line: the other game keeps its HUD in the middle 16:9, this fork's stretches it
+        assert(strstr(hn_ultrawide(opts.ultrawide, -1), "keeps its 16:9 shape in the middle"));
+        oot_now = false;
+        assert(strstr(hn_ultrawide(opts.ultrawide, -1), "are stretched with it"));
+        oot_now = true;
         // (the game's own at the host's 32:9: its 2048x1152 widened as the game draws it, at its height)
         assert(strcmp(tx_output_res(0), "4096x1152 (reduced)") == 0);
         opts.ultrawide = aspect_index("16:9");   // (16:9 on that monitor: the outputs as they are)

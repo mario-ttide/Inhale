@@ -723,7 +723,7 @@ game-specific rows were made for (`HOS_OPT_OOT_GAME`, 72, through the existing o
 shows; no row or string was deleted.
 
 - Hidden for this game, each for a consumer that is only the other game's code: Field of view, Shadow resolution,
-  Aspect ratio, Ultrawide menus, HUD layout, Text speed, Text size, Camera speed, Skip title screen, Skip opening,
+  Ultrawide menus, HUD layout, Text speed, Text size, Camera speed, Skip title screen, Skip opening,
   the Debug tab's tools, the ocarina notes of the Controls page, the microphone rows (Audio's Microphone, Microphone
   gain and Test microphone: the ocarina's input streams in host/nn_audio_in.c, which no game code calls); and, read to
   be sure, Render resolution (its values are read by no host code), Upscaler and DLSS model (the chain replaces only the
@@ -733,7 +733,8 @@ shows; no row or string was deleted.
 - A hidden row's saved value is held at its default while the row is hidden (`oot_rows_hold`, for the run only: the
   file keeps its value). Checked with a saved cap of 30: 60.0 presents a second.
 - Any game but the other one stays 16:9 (`host/hos_main.c`): told another shape, the renderer stretched the 16:9
-  picture.
+  picture. Since issue #20 this game takes the shape too, its cameras hooked (`nx2/kirby_wide.py`), and the Aspect
+  ratio row shows again: "issue #20, ultrawide" below.
 - Words: "Link" is "the character" in the Walk rows; the Microphone help no longer speaks of the ocarina; the
   Quality preset's and the weak laptop row's help are chosen by the flag, without the hidden rows' names; the
   graphics card message no longer names the other game; the three texts that sent the player to upstream's tracker
@@ -2003,3 +2004,100 @@ Radeon 780M (AMD 26.11.2) the fixed build differs by at most 9.
 
 Why the headless runs after the sync did not see it: they counted the fence stalls in the log and nobody looked at the
 shots. `.claude/skills/verify` now makes the shots of each run part of the check.
+
+### 2026-11-23: issue #20, ultrawide
+
+The request: 21:9 (2560 x 1080, 3440 x 1440, 5120 x 2160) and 32:9 (3840 x 1080, 5120 x 1440). Before, the host kept
+this game at 16:9 (`host/hos_main.c`) and the present fitted the 16:9 picture into the window with bars at the sides.
+Upstream's ultrawide (`nx2/oot_wide.py`, `host/hos_wide_ui.c`) hooks its own game only.
+
+**The lead.** Fl4sh9174's 21:9 mod for the Switch 1 game (v1.1.0) changes one size pair, a `mov x8, #0xa14; movk x8,
+#0x438, lsl #32` (2580 x 1080) in place of 1920 x 1080, and its notes say the camera takes that ratio and some of the UI
+follows; the player picks the emulator's "Stretch to window". Taken as a finding only: its address does not carry over,
+and nothing of the mod is in this tree.
+
+**What the pair is here, measured (not the camera).** A probe build put C after each 16:9 size constant of `main` and
+rewrote the width to height x 2.3889 under a run-time mask (`work/runs/uw/probe/`), with a log of each 3D camera's
+uniform buffer (`main+0x80e2c8`, in `f_8082e090`). One run a site, S5's walk at 3840 x 2160:
+
+| site (after the movk) | size | c16 projection p11 / p00 | c16 aspect field |
+|---|---|---|---|
+| `main+0x64fbb4` x10 (the six sizes' entries 0-3 and 5) | 2560 x 1440 | 1.7778 | 2.3889 |
+| `main+0x64fbb8` x11 (entry 4), `+0x65ef8c`, `+0x65efa4`, `+0x66e278`, `+0x66e27c`, `+0x66a62c`, `+0x66a644`, `+0x5c33a0` | 1920 x 1080, 2560 x 1440, 3840 x 2160, 1280 x 720 | 1.7778 | 1.7778 |
+
+So no pair here moves the cameras. The one that moved anything, entry 5 of the graphics system's six sizes
+(`+0xf3d28`), is only c16's aspect field: `f_8082e090` divides its width by its height (`main+0x80e20c`) and stores it
+at c16 +0x90.
+
+**Where the camera's ratio comes from.** The camera object holds near, far, the vertical angle (twice) and the aspect at
++0xe0, +0xe4, +0xec, +0xf0 and +0xf4. Two constructors write 16 / 9 there (`main+0x80dd9c`, `main+0x8c0b30`); changed,
+the projection stayed 16:9 and +0xf4 went back to 16 / 9. A probe of every `str s, [x, #0xf4]` in `main` found the
+writer: `main+0x74de24`, in a projection builder (`main+0x74dd4c`; its twin `main+0x74dc50`) that computes p11 =
+1 / tan(angle / 2), p00 = p11 / aspect and stores the aspect. Both are closures that take the camera, the angle, the
+aspect (+0x10), near and far from a capture block, and the one caller seen is the game's script interpreter
+(`main+0x7d0830` in `f_807eff00`, a `blr` in its opcode dispatch). The 16 / 9 is a script's argument, data rather than
+code. The Switch 1 game's pair probably feeds that script there; here it does not.
+
+**The change.**
+
+- `nx2/kirby_wide.py`: C after the builders' load of the aspect (`main+0x74dc80` s9, `main+0x74dd80` s8) and after
+  c16's divide (`main+0x80e20c` s0) calls `kirby_wide_aspect` (`host/kirby_wide.c`): an aspect of 16 / 9 becomes
+  `hos_wide_ratio`, any other aspect is left, and so is everything at a 16:9 screen (the ratio is 0 there). The vertical
+  angle stays the game's: wider sees more at the sides, narrower less. Gated on main's build id and the three words.
+- Measured with the probe's switch on: the gameplay camera's c16 went from p00 1.2063 to 0.8977 at p11 2.1445 (the
+  ratio 2.3889), and the 45 and 55 degree cameras the same way. A UI camera of the same aspect (`+0x78825dd000` in the
+  runs) is not built by these builders and stays 16:9.
+- c16's aspect field: with only the projections changed, a run against one with the field at the same ratio differed in
+  the moving objects (timing) and by a faint pattern over the whole frame, so some pass reads it. In the game as
+  shipped the field always equals the cameras' aspect; the hook keeps it so.
+- `host/hos_main.c` (marked `(inhale)`): this game is let through the "16:9 for every game but upstream's" rule when
+  `kirby_wide_ok()` (main's build id is the one the lift hooks). It then sets `hos_wide_ratio` and the window's shape
+  as for upstream's game, from HOS_ASPECT, the Aspect ratio row or an output of its own shape. Unlike upstream's,
+  `hos_wide_squeeze` is 1 and `hos_wide_margin` 0: the renderer's menu sides (`gpu/vk/vk_framegen.cpp` `wide_sides`)
+  know a frame without a world by upstream's lighting program alone, so in this game every frame would have had its
+  sides blurred.
+- The present already stretches the 16:9 window texture to `hos_aspect_ratio` (`gpu/vk/vk_present_rect.h`). The game's
+  window textures stay 3840 x 2160.
+- The Aspect ratio row is shown again (`is_oot_row`). Ultrawide menus and HUD layout stay hidden: they are
+  `host/hos_wide_ui.c`'s, for upstream's layouts.
+
+**The scene at the picture's shape.** With only the cameras changed, the scene stays at 2560 x 1440 (`host/kirby_res.c`
+scaled the levels for 16:9 outputs only), so a 3440 x 1440 picture had 2560 columns of detail. Now a picture of its own
+shape (`hos_wide_ratio` set, docked) gives the six levels its shape, at least 1440 lines high and at most 3840 x 2160's
+pixels (the largest the game was seen to draw): 3440 x 1440 at a 3440 x 1440 output, 3412 x 1440 at 2560 x 1080,
+5120 x 1440 at 5120 x 1440, 4450 x 1862 at a 4K output told a 21:9 screen (picture 5120 x 2144). The game's Copy then
+draws that scene into its 16:9 window texture, which the present stretches back: the texture is 3840 wide, so it limits
+only a 32:9 picture wider than that. The handheld profile keeps the file as read.
+
+| S5's walk, RX 7900 XTX, `work/runs/uw/` | picture | scene (pass trace) | GPU time a frame |
+|---|---|---|---|
+| `w_3440x1440` | 3440 x 1440, ratio 2.3889 | 3440 x 1440 | 2.5 ms |
+| `w_2560x1080` | 2560 x 1080, ratio 2.3704 | 3412 x 1440 | 2.5 ms |
+| `w_5120x1440` | 5120 x 1440, ratio 3.5556 | 5120 x 1440 | 3.0 ms |
+| `w_a21` (`HOS_ASPECT=2.3889`, 3840 x 2160 output) | 5120 x 2144, ratio 2.3881 | 4450 x 1862 | 3.3 ms |
+| `w_3840x2160` (16:9, no ratio) | the game's | 3840 x 2160 | 3.3 ms |
+
+Each ran 90 s without an error; the shots (`shots_w_*`, at the output's size) show the world wider, Kirby and the coins
+round. The first runs of the same walks, before the scene change, drew the same pictures from a 2560 x 1440 scene (their
+logs were written over by the runs above).
+
+**The HUD, menus and movies are stretched** with the picture: drawn by the game for 16:9 into the window texture, they
+widen by the ratio over 16 / 9 (1.34 at 21:9, 2 at 32:9). The mod's notes say the Switch 1 game moves some of its UI
+for the ratio; nothing of the kind was seen here, since the layouts take no size that the hooks change. Placing the HUD
+at its 16:9 size would mean drawing the layouts into a middle 16:9 of a wider window texture, the work upstream's
+`hos_wide_ui.c` does for its game's layouts: not done. The Aspect ratio row's 16:9 gives the game's picture back.
+
+Tests: `tests/test_kirby_wide.py` (the hook's ratio and the projection it makes, 21:9, 32:9, 16:10, other aspects and a
+16:9 screen left; the install, none for another build or word), `tests/test_widescreen_shapes.py` (this game takes the
+shape only with its hook, with no middle 16:9; before the change it printed `kirby, ratio 2.3889 at 1440: 0x0 0x0 0.0000
+0.0000 0.0000, expected 3440x1440 2584x1080 2.3889 1.0000 0.0000`), `tests/test_kirby_res.py` (the scene's shape and
+its cap). `tests/run_all.py --strict` with both header folders: 794 passed, 0 failed, 11 skipped.
+
+Before the push (the verify skill, S5's walk at 3840 x 2160, shots compared with the #18/#19 fix's): this PC's RX 7900
+XTX (21 of 21 frames, 0 over 30) and Ryzen iGPU (10 of 10, 0 over 30); the Windows PC's RTX 2080 SUPER (81 of 81, 0 over
+30) and Radeon 780M (40 of 40, 0 over 30), each run with `HOS_ASPECT=0`. Without it the Windows runs drew a 4:3 picture
+(2880 x 2160, ratio 1.3333): the screen an ssh session there reports is 4:3, and the Aspect ratio's default is the
+monitor's shape, which this game now takes. They drew it right, as did a 3440 x 1440 run on the 2080 SUPER.
+
+Not checked: a real 21:9 or 32:9 screen, a window (the runs are headless), stages past S5's walk,
+the save and photo pictures (whether a picture the game takes of the scene is now wider), and how a 32:9 HUD reads.

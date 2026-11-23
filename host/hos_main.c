@@ -2441,8 +2441,11 @@ static int game_main(int argc, char **argv) {
         if (hos_output_own_shape(output_w, output_h)) want = (float)output_w / (float)output_h;
         /* (inhale) Only the other game draws a picture of another shape (nx2/oot_wide.py's hooks, in its image alone). Any
            other game keeps its own 16:9 picture, which the window shows whole, with bars on a screen of another shape:
-           told the screen's shape, the renderer stretched the 16:9 picture to it (gpu/vk/vk_present_rect.h) */
-        if (!hos_game_is_oot()) want = 0.0f;
+           told the screen's shape, the renderer stretched the 16:9 picture to it (gpu/vk/vk_present_rect.h). This fork's game
+           takes the shape too where nx2/kirby_wide.py hooks its cameras (host/kirby_wide.c): its picture is then drawn for the
+           screen's ratio and stretched to it */
+        int kirby_wide_ok(void);
+        if (!hos_game_is_oot() && !kirby_wide_ok()) want = 0.0f;
         const double game = 16.0 / 9.0;
         /* (a screen narrower than 16:9 too, 16:10 to 5:4: the picture keeps the game's height and is narrower, the
            cameras take its ratio, and the HUD fills its width instead of a middle 16:9 wider than the screen. A 4:3 CRT
@@ -2461,6 +2464,9 @@ static int game_main(int argc, char **argv) {
             hos_wide_squeeze = (float)fmin(1.0, game / ((double)ow / oh));   /* (a narrower screen: the whole width) */
             hos_wide_margin = (1.0f - hos_wide_squeeze) / 2.0f;
             hos_aspect_ratio = hos_wide_ratio;
+            /* (inhale) this fork's game stretches its HUD, menus and movies with the picture: no middle 16:9, whose sides the
+               renderer would blur in every frame of it (gpu/vk/vk_framegen.cpp wide_sides: it knows the other game's world only) */
+            if (!hos_game_is_oot()) hos_wide_squeeze = 1.0f, hos_wide_margin = 0.0f;
             hos_log("boot: widescreen: picture %ux%u, scene %ux%u, camera ratio %.4f, HUD and movies in the middle %.1f%%", ow, oh, sw, sh,
                     (double)hos_wide_ratio, hos_wide_squeeze * 100.0);
         } else if (want > 1.0f) {

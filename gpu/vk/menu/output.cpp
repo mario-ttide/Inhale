@@ -354,12 +354,16 @@ const char* hn_ultrawide(int v, int variant) {
         "Your monitor's own shape: the picture fills it. The HUD keeps its 16:9 shape in the middle.",
         "The game's own shape.",
         "Wider than 16:9: the camera sees more at the sides. The HUD and menus keep the middle 16:9.",
-        "Narrower than 16:9: the picture keeps its height, and the HUD fills its width."};
+        "Narrower than 16:9: the picture keeps its height, and the HUD fills its width.",
+        // (inhale) this fork's game stretches its HUD and menus with the picture (host/kirby_wide.c), told by oot_rows()
+        "Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.",
+        "Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture."};
     if (variant >= 0) return variant < (int)std::size(t) ? t[variant] : nullptr;
-    if (aspect_is_monitors(v)) return t[0];
+    const int kirby = menu_oot_rows() ? 0 : 4;   // (inhale)
+    if (aspect_is_monitors(v)) return t[kirby];
     const std::vector<dm::Shape> shapes = output_shapes();
     const double r = shapes.empty() ? 16.0 / 9.0 : shapes[std::clamp(v, 0, (int)shapes.size() - 1)].r, game = 16.0 / 9.0;
-    return r > game * 1.01 ? t[2] : r < game * 0.99 ? t[3] : t[1];
+    return r > game * 1.01 ? t[kirby ? 5 : 2] : r < game * 0.99 ? t[3] : t[1];
 }
 /// The Output resolution: the game's own reduced size, the player's own, or one of the screen's sizes as it compares with the
 /// screen (its own, larger, smaller; nothing where the screen's size is not known)

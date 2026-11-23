@@ -1,5 +1,6 @@
 """host/hos_main.c's widescreen sizes, game-free: the picture, scene, camera ratio and HUD for screens wider and
-narrower than 16:9 (a 4:3 CRT, 16:10, 5:4 and narrower, 21:9, 32:9), and the game's own picture for 16:9.
+narrower than 16:9 (a 4:3 CRT, 16:10, 5:4 and narrower, 21:9, 32:9), and the game's own picture for 16:9. This fork's game
+takes the shape too where its camera hook is (host/kirby_wide.c), with no middle 16:9; any other game keeps 16:9.
 
     python -I -B tests/test_widescreen_shapes.py [--cc gcc]
 """
@@ -41,7 +42,9 @@ float hos_aspect_ratio;
 static unsigned out_w, out_h = 1440;
 uint32_t hos_output_size(int height) { return height ? out_h : out_w; }
 static void hos_log(const char *f, ...) { (void)f; }
-static int hos_game_is_oot(void) { return 1; }   /* (the game these sizes are for: any other keeps 16:9) */
+static int game_oot = 1, game_kirby;   /* (the game these sizes are for; this fork's, hooked; any other keeps 16:9) */
+static int hos_game_is_oot(void) { return game_oot; }
+int kirby_wide_ok(void) { return game_kirby; }
 
 static void wide(float want) {
 ''' + block() + r'''
@@ -49,7 +52,8 @@ static void wide(float want) {
 
 int main(int argc, char **argv) {
     out_h = (unsigned)atoi(argv[2]);
-    out_w = argc > 3 ? (unsigned)atoi(argv[3]) : out_h * 16 / 9;
+    out_w = argc > 3 && atoi(argv[3]) ? (unsigned)atoi(argv[3]) : out_h * 16 / 9;
+    if (argc > 4) game_oot = !strcmp(argv[4], "oot"), game_kirby = !strcmp(argv[4], "kirby");
     wide((float)atof(argv[1]));
     printf("%llux%llu %llux%llu %.4f %.4f %.4f\n",
            (unsigned long long)(hos_wide_out & 0xffffffffu), (unsigned long long)(hos_wide_out >> 32),
@@ -109,9 +113,22 @@ int main(int argc, char **argv) {
             got = subprocess.check_output([str(exe), *args_], text=True, env=old_cap).strip()
             if got != expect:
                 bad.append("HOS_WIDE_MAX_PX=8294400, %s: %s, expected %s" % (" ".join(args_), got, expect))
+        # (this fork's game, its cameras hooked: the picture and its ratio as the other game's, the HUD and menus stretched with
+        # the picture, so no middle 16:9; a game without a hook stays 16:9 whatever the screen)
+        for game, want, height, expect in (
+            ("kirby", "2.3889", 1440, "3440x1440 2584x1080 2.3889 1.0000 0.0000"),   # 21:9
+            ("kirby", "3.5556", 1440, "5120x1440 3840x1080 3.5556 1.0000 0.0000"),   # 32:9
+            ("kirby", "1.6", 1440, "2304x1440 1728x1080 1.6000 1.0000 0.0000"),      # 16:10
+            ("kirby", "1.7778", 1440, "0x0 0x0 0.0000 0.0000 0.0000"),               # 16:9: the game's own
+            ("another", "2.3889", 1440, "0x0 0x0 0.0000 0.0000 0.0000"),             # no hook: 16:9
+            ("oot", "2.3889", 1440, "3440x1440 2584x1080 2.3889 0.7442 0.1279"),     # the other game's, unchanged
+        ):
+            got = subprocess.check_output([str(exe), want, str(height), "0", game], text=True, env=env).strip()
+            if got != expect:
+                bad.append("%s, ratio %s at %u: %s, expected %s" % (game, want, height, got, expect))
         if bad:
             raise SystemExit("FAIL:\n  " + "\n  ".join(bad))
-    print("PASS: widescreen sizes for 4:3, 16:10, 5:4, 16:9, 21:9, 32:9 and 48:9 screens")
+    print("PASS: widescreen sizes for 4:3, 16:10, 5:4, 16:9, 21:9, 32:9 and 48:9 screens; this fork's game with its hook only")
 
 
 if __name__ == "__main__":

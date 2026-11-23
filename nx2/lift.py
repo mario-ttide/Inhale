@@ -212,6 +212,8 @@ def main():
         mod = next((m for m in meta["modules"] if m["name"] == "main"), None)
         if mod:
             kirby_far.install(img, mod["base"], mod.get("build_id", ""))
+            import kirby_wide   # (inhale) the cameras at the screen's ratio: nx2/kirby_wide.py
+            kirby_wide.install(L, img, mod["base"], mod.get("build_id", ""))
     discover.discover(L, img_dir, chunks.file_jobs(), max_insns=a.max_func)
     if a64_lift.local_regs() or a64_lift.local_flags():   # (C spliced after an instruction reads and writes the context)
         print("locals: %d functions with spliced code kept in the context" % local_regs.keep_spliced(L))

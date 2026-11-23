@@ -81,6 +81,7 @@ bool host_screen_size(uint32_t*, uint32_t*) { return false; }
 std::string monitor_shape() { return {}; }
 int ultrawide_read = 1, aspect_started = -1;
 bool aspect_follows_host(int) { return false; }
+bool oot_rows() { return true; }   // (inhale: which game's rows, menu_oot_rows: not what this checks)
 #ifdef _WIN32
 static int setenv(const char* name, const char* value, int) { return _putenv_s(name, value); }
 #endif

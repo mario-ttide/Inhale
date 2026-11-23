@@ -931,7 +931,7 @@ bool is_oot_row(const Row& r) {
            v == &opts.text_speed || v == &opts.text_size || v == &opts.camera_speed || v == &opts.skip_title ||
            v == &opts.skip_opening || v == &opts.resolution || v == &opts.dlss || v == &opts.dlss_model ||
            v == &opts.fps_cap || v == &opts.realtime || v == &opts.disable_camera_centering ||
-           v == &opts.ultrawide ||   // (the Aspect ratio: host/hos_main.c keeps another game at 16:9)
+           // (not the Aspect ratio: this game's cameras take the screen's ratio too, host/kirby_wide.c)
            // (Frame generation by: DLSS FG makes its frames from the temporal Upscaler's picture, which only the other game has)
            v == &opts.framegen_by ||
            // (inhale) upstream's rows of v3.1.1 for the other game: Sprint (its hero's run, host/oot_sprint.c), its short
@@ -1029,6 +1029,7 @@ int saved_value(int* value) {
     return *value;
 }
 } // namespace   // (#1633: asked by the modules too, menu_module.h's "what modules ask the renderer")
+bool menu_oot_rows() { return oot_rows(); }   // (inhale) menu_module.h: a module's text for the one game or the other
 /// The menu set the row (the player or a preset): its value is saved from now on, even where it is the
 /// one the environment forced
 void env_release(const int* value) {
@@ -4674,8 +4675,8 @@ std::recursive_mutex menu_mu;
 // without the row: the player can neither see nor undo a saved one there, and a few still reach this game (a frame rate cap
 // of 30 is half speed without the other game's time step; an Upscaler chosen moves the textures' LOD bias). For this run
 // only, as the environment's switches (env_override): save() goes on writing the file's own value, which is the other
-// game's. Frame generation by is held at Built-in FG. Not the Aspect ratio: host/hos_main.c reads it itself, and keeps
-// another game at 16:9. A restart row held is what the run started with, so no restart is asked for it. Called when the
+// game's. Frame generation by is held at Built-in FG. Not the Aspect ratio: host/hos_main.c reads it itself (and it is no
+// longer one of these rows, host/kirby_wide.c). A restart row held is what the run started with, so no restart is asked for it. Called when the
 // host says which game runs, before the first frame, and again at each of the replay's windows (menu_hold_oot_rows): a
 // preset chosen since sets the Upscaler and the Render resolution among its rows
 void oot_rows_hold() {

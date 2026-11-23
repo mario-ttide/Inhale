@@ -8,8 +8,10 @@
 
    As the file is read, the six sizes are scaled by the output's width over 2560 where the output is 16:9 and between
    2560 x 1440 and 3840 x 2160 (the largest of the game's own size table, main+0x9aaa70): at 3840 x 2160 they become
-   3840 x 2160 down to 1280 x 720. Another output keeps the game's sizes (a 16:10 or 21:9 one: the game's cameras are
-   16:9).
+   3840 x 2160 down to 1280 x 720. A picture of another shape (21:9, 32:9, 16:10: host/kirby_wide.c gives the cameras its
+   ratio) takes the picture's shape, at least 1440 lines high and at most 3840 x 2160's pixels: 3440 x 1440 for a 3440 x
+   1440 output, 5120 x 1440 for 5120 x 1440, 4434 x 1870 for 5120 x 2160 (docs/design.md, "issue #20"). Another output
+   keeps the game's sizes.
 
    The steps are off by default: all six levels get the first one's size, so the docked scene never steps down (at the
    output's size where it is scaled, at 2560 x 1440 at any other output). At 3840 x 2160 the game stepped to 3360 x 1890
@@ -21,12 +23,15 @@
 #ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/inhale_env.h"
 #endif
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 void hos_log(const char *fmt, ...);
 uint32_t hos_output_size(int height);   /* nn_applet.c */
+extern volatile uint64_t hos_wide_out;  /* hos_main.c: the picture of another shape, height << 32 | width, or 0 */
+extern volatile float hos_wide_ratio;   /* hos_main.c: its ratio, 0 at 16:9 */
 int hos_handheld(void);                 /* nn_applet.c */
 
 #define KIRBY_SCN_TABLE 0x97ca0
@@ -37,8 +42,10 @@ static const uint32_t kirby_scn_levels[KIRBY_SCN_LEVELS * 3] = {
 };
 
 /* The read of [off, off + n) of a file the game opened as guest, now in buf: the table rewritten in it when it is
-   there whole. Returns 1 when the sizes were changed. */
-int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t out_w, uint32_t out_h, int fixed) {
+   there whole. Returns 1 when the sizes were changed. shaped: out_w x out_h is the picture's own shape (kirby_scn_shape),
+   taken whatever its ratio. */
+int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t out_w, uint32_t out_h, int fixed,
+                    int shaped) {
     static const char name[] = "/basil/ScnCommon.bin";
     const size_t len = guest ? strlen(guest) : 0, tail = sizeof name - 1;
     if (len < tail || strcmp(guest + len - tail, name)) return 0;
@@ -50,7 +57,7 @@ int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, ui
         hos_log("kirby: %s: the frame sizes at %#x are not the ones known: left as they are", guest, KIRBY_SCN_TABLE);
         return 0;
     }
-    const int bigger = (uint64_t)out_w * 9 == (uint64_t)out_h * 16 && out_w > 2560 && out_w <= 3840;
+    const int bigger = shaped ? out_w && out_h : (uint64_t)out_w * 9 == (uint64_t)out_h * 16 && out_w > 2560 && out_w <= 3840;
     if (!bigger && !fixed) return 0;
     for (int k = 0; k < KIRBY_SCN_LEVELS; k++) {
         const int from = fixed ? 0 : k;
@@ -64,10 +71,23 @@ int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, ui
     return 1;
 }
 
+/* The scene for a picture of pw x ph: its shape, at least 1440 lines (the game's own) and at most 3840 x 2160's pixels (the
+   largest the game was seen to draw), each side even */
+void kirby_scn_shape(uint32_t pw, uint32_t ph, uint32_t *w, uint32_t *h) {
+    double s = ph && ph < 1440 ? 1440.0 / ph : 1.0;
+    const double px = (double)pw * ph * s * s, most = 3840.0 * 2160.0;
+    if (px > most) s *= sqrt(most / px);
+    *w = (uint32_t)(pw * s) & ~1u, *h = (uint32_t)(ph * s) & ~1u;
+}
+
 /* nn_fs.c's read, for each file read: the output size, the profile and HOS_DYNAMIC_RES asked only for the one file */
 void kirby_read_done(const char *guest, int64_t off, uint8_t *buf, uint64_t n) {
     if (!guest || !strstr(guest, "ScnCommon")) return;
-    kirby_scn_patch(guest, off, buf, n, hos_output_size(0), hos_output_size(1), !hos_handheld() && !env_on("HOS_DYNAMIC_RES"));
+    uint32_t w = hos_output_size(0), h = hos_output_size(1);
+    const uint64_t wide = hos_wide_out;
+    const int shaped = hos_wide_ratio > 0.0f && wide && !hos_handheld();   /* (handheld: the file as read, as at 16:9) */
+    if (shaped) kirby_scn_shape((uint32_t)wide, (uint32_t)(wide >> 32), &w, &h);
+    kirby_scn_patch(guest, off, buf, n, w, h, !hos_handheld() && !env_on("HOS_DYNAMIC_RES"), shaped);
     void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n);   /* (the shadow map's size: kirby_shadow.c) */
     kirby_shadow_read(guest, off, buf, n);
 }

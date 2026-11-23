@@ -31,6 +31,8 @@ inline constexpr Entry kpt_BR[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "O desfoque que o jogo aplica ao que está longe da câmera. Desligado mantém a imagem inteira nítida. Aplica na hora."},
     {"The microphone the game listens to, when it uses one.", "O microfone que o jogo escuta, quando usa um."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "O tamanho do mapa de sombras: maior mantém nítidas, em vez de quadriculadas, as sombras dos personagens e do cenário, em troca de mais memória de vídeo e um pouco de tempo de GPU. Aplica após reiniciar."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Mais largo que 16:9: a câmera vê mais nas laterais. O HUD e os menus são esticados com a imagem."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "O formato do seu monitor: a imagem o preenche. O HUD e os menus são esticados com ela."},
 };
 inline constexpr Entry kes_419[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 píxeles por lado, la de la consola. Unos 12 MB de memoria de video."},
@@ -49,6 +51,8 @@ inline constexpr Entry kes_419[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "El desenfoque que el juego aplica a lo que está lejos de la cámara. Apagado mantiene nítida toda la imagen. Se aplica al instante."},
     {"The microphone the game listens to, when it uses one.", "El micrófono que escucha el juego, cuando usa uno."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "El tamaño del mapa de sombras: más alto mantiene nítidas, en lugar de pixeladas, las sombras de los personajes y del escenario, a cambio de más memoria de video y algo de tiempo de GPU. Se aplica al reiniciar."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Más ancha que 16:9: la cámara ve más a los lados. El HUD y los menús se estiran con la imagen."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "La forma de tu monitor: la imagen lo llena. El HUD y los menús se estiran con ella."},
 };
 inline constexpr Entry kes[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 píxeles por lado, la de la consola. Unos 12 MB de memoria de vídeo."},
@@ -67,6 +71,8 @@ inline constexpr Entry kes[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "El desenfoque que el juego aplica a lo que está lejos de la cámara. Desactivado mantiene nítida toda la imagen. Se aplica al instante."},
     {"The microphone the game listens to, when it uses one.", "El micrófono que escucha el juego, cuando usa uno."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "El tamaño del mapa de sombras: más alto mantiene nítidas, en lugar de pixeladas, las sombras de los personajes y del escenario, a cambio de más memoria de vídeo y algo de tiempo de GPU. Se aplica al reiniciar."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Más ancha que 16:9: la cámara ve más a los lados. El HUD y los menús se estiran con la imagen."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "La forma de tu monitor: la imagen lo llena. El HUD y los menús se estiran con ella."},
 };
 inline constexpr Entry kfr[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 pixels de côté, celle de la console. Environ 12 Mo de mémoire vidéo."},
@@ -85,6 +91,8 @@ inline constexpr Entry kfr[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "Le flou que le jeu applique à ce qui est loin de la caméra. Désactivé garde toute l'image nette. S'applique immédiatement."},
     {"The microphone the game listens to, when it uses one.", "Le micro que le jeu écoute, quand il en utilise un."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "La taille de la carte d'ombres : plus elle est grande, plus les ombres des personnages et du décor restent nettes au lieu de pixelisées, pour plus de mémoire vidéo et un peu de temps GPU. S'applique après un redémarrage."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Plus large que 16:9 : la caméra voit plus sur les côtés. Le HUD et les menus sont étirés avec l'image."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "La forme de votre écran : l'image le remplit. Le HUD et les menus sont étirés avec elle."},
 };
 inline constexpr Entry kde[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 Pixel Kantenlänge, wie auf der Konsole. Etwa 12 MB Videospeicher."},
@@ -103,6 +111,8 @@ inline constexpr Entry kde[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "Die Unschärfe, die das Spiel auf Entferntes legt. Aus hält das ganze Bild scharf. Wirkt sofort."},
     {"The microphone the game listens to, when it uses one.", "Das Mikrofon, auf das das Spiel hört, wenn es eins verwendet."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "Die Größe der Schattenkarte: höher hält die Schatten von Figuren und Umgebung scharf statt pixelig, für mehr Videospeicher und etwas GPU-Zeit. Gilt nach einem Neustart."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Breiter als 16:9: Die Kamera sieht mehr an den Seiten. HUD und Menüs werden mit dem Bild gestreckt."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "Die eigene Form des Monitors: Das Bild füllt ihn aus. HUD und Menüs werden mit ihm gestreckt."},
 };
 inline constexpr Entry kit[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 pixel per lato, quella della console. Circa 12 MB di memoria video."},
@@ -121,6 +131,8 @@ inline constexpr Entry kit[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "La sfocatura che il gioco applica a ciò che è lontano dalla telecamera. Disattivata mantiene nitida tutta l'immagine. Si applica subito."},
     {"The microphone the game listens to, when it uses one.", "Il microfono che il gioco ascolta, quando ne usa uno."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "La dimensione della mappa d'ombra: più alta mantiene nitide, invece che squadrettate, le ombre dei personaggi e dello scenario, in cambio di più memoria video e un po' di tempo GPU. Si applica dopo un riavvio."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Più largo di 16:9: la telecamera vede di più ai lati. L'HUD e i menu vengono allungati con l'immagine."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "La forma del tuo monitor: l'immagine lo riempie. L'HUD e i menu vengono allungati con essa."},
 };
 inline constexpr Entry knl[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 pixels per zijde, die van de console. Ongeveer 12 MB videogeheugen."},
@@ -139,6 +151,8 @@ inline constexpr Entry knl[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "De vervaging die het spel toepast op wat ver van de camera is. Uit houdt het hele beeld scherp. Werkt meteen."},
     {"The microphone the game listens to, when it uses one.", "De microfoon waarnaar het spel luistert, als het er een gebruikt."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "De grootte van de schaduwkaart: hoger houdt de schaduwen van personages en omgeving scherp in plaats van blokkerig, voor meer videogeheugen en wat GPU-tijd. Werkt na een herstart."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Breder dan 16:9: de camera ziet meer aan de zijkanten. De HUD en menu's worden met het beeld uitgerekt."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "De eigen vorm van je monitor: het beeld vult hem. De HUD en menu's worden ermee uitgerekt."},
 };
 inline constexpr Entry kpl[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 pikseli na bok, jak na konsoli. Około 12 MB pamięci wideo."},
@@ -157,6 +171,8 @@ inline constexpr Entry kpl[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "Rozmycie, które gra nakłada na to, co jest daleko od kamery. Wyłączone zachowuje ostrość całego obrazu. Działa od razu."},
     {"The microphone the game listens to, when it uses one.", "Mikrofon, którego słucha gra, gdy z niego korzysta."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "Rozmiar mapy cieni: wyższy sprawia, że cienie postaci i otoczenia są ostre zamiast kanciastych, kosztem większej ilości pamięci wideo i odrobiny czasu GPU. Działa po ponownym uruchomieniu."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Szersze niż 16:9: kamera widzi więcej po bokach. HUD i menu są rozciągane razem z obrazem."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "Własne proporcje monitora: obraz go wypełnia. HUD i menu są rozciągane razem z nim."},
 };
 inline constexpr Entry kru[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "1400 пикселей по стороне, как на консоли. Около 12 МБ видеопамяти."},
@@ -175,6 +191,8 @@ inline constexpr Entry kru[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "Размытие, которое игра накладывает на то, что далеко от камеры. «Выкл.» оставляет всю картинку резкой. Применяется сразу."},
     {"The microphone the game listens to, when it uses one.", "Микрофон, который слушает игра, когда он ей нужен."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "Размер карты теней: чем он больше, тем чётче, без квадратиков, тени персонажей и окружения, ценой большего объёма видеопамяти и немного времени GPU. Применяется после перезапуска."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "Шире 16:9: камера видит больше по сторонам. HUD и меню растягиваются вместе с изображением."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "Собственный формат монитора: изображение заполняет его. HUD и меню растягиваются вместе с ним."},
 };
 inline constexpr Entry kja[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "一辺1400ピクセル、本体と同じです。ビデオメモリーは約12 MB。"},
@@ -193,6 +211,8 @@ inline constexpr Entry kja[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "カメラから遠いものにゲームがかけるぼかしです。オフにすると画面全体がくっきりします。すぐに反映されます。"},
     {"The microphone the game listens to, when it uses one.", "ゲームがマイクを使うときに、音を聞き取るマイクです。"},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "影マップのサイズです。高いほど、キャラクターや背景の影がカクカクせずくっきりしますが、ビデオメモリーとGPU時間を少し多く使います。再起動後に反映されます。"},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "16:9より広い比率です。カメラの左右が広く見えます。HUDとメニューは映像に合わせて引き伸ばされます。"},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "モニター本来の比率です。映像が画面いっぱいに広がります。HUDとメニューも合わせて引き伸ばされます。"},
 };
 inline constexpr Entry kko[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "한 변 1400픽셀, 콘솔과 같습니다. 비디오 메모리 약 12MB."},
@@ -211,6 +231,8 @@ inline constexpr Entry kko[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "카메라에서 먼 곳에 게임이 주는 흐림 효과입니다. 끄면 화면 전체가 선명하게 유지됩니다. 즉시 적용됩니다."},
     {"The microphone the game listens to, when it uses one.", "게임이 마이크를 사용할 때 소리를 듣는 마이크입니다."},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "그림자 맵의 크기입니다. 높을수록 캐릭터와 배경의 그림자가 각지지 않고 선명해지지만, 비디오 메모리와 GPU 시간을 조금 더 씁니다. 다시 시작한 후 적용됩니다."},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "16:9보다 넓은 비율입니다. 카메라가 양옆을 더 많이 봅니다. HUD와 메뉴는 화면에 맞춰 늘어납니다."},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "모니터 고유의 비율입니다. 화면을 가득 채웁니다. HUD와 메뉴도 함께 늘어납니다."},
 };
 inline constexpr Entry kzh_Hans[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "边长1400像素，与主机相同。约占12 MB显存。"},
@@ -229,6 +251,8 @@ inline constexpr Entry kzh_Hans[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "游戏对远离镜头之处施加的模糊。关闭可让整个画面保持清晰。立即生效。"},
     {"The microphone the game listens to, when it uses one.", "游戏使用麦克风时所听取的麦克风。"},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "阴影贴图的大小：越高，角色和场景的阴影越清晰，不再呈块状，但会占用更多显存和少量GPU时间。重新启动后生效。"},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "比16:9宽：镜头能看到两侧更多内容。HUD和菜单随画面拉伸。"},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "显示器本身的比例：画面将其填满。HUD和菜单随之拉伸。"},
 };
 inline constexpr Entry kzh_Hant[] = {
     {"1400 pixels a side, the console's. About 12 MB of video memory.", "邊長1400像素，與主機相同。約佔12 MB顯示記憶體。"},
@@ -247,6 +271,8 @@ inline constexpr Entry kzh_Hant[] = {
     {"The blur the game puts on what is far from the camera. Off keeps the whole picture sharp. Applies at once.", "遊戲對遠離鏡頭之處施加的模糊。關閉可讓整個畫面保持清晰。立即生效。"},
     {"The microphone the game listens to, when it uses one.", "遊戲使用麥克風時所聽取的麥克風。"},
     {"The size of the shadow map: higher keeps the shadows of characters and scenery sharp instead of blocky, for more video memory and a little GPU time. Applies after a restart.", "陰影貼圖的大小：越高，角色和場景的陰影越清晰，不再呈塊狀，但會佔用更多顯示記憶體和少量GPU時間。重新啟動後生效。"},
+    {"Wider than 16:9: the camera sees more at the sides. The HUD and menus are stretched with the picture.", "比16:9寬：鏡頭能看到兩側更多內容。HUD和選單隨畫面拉伸。"},
+    {"Your monitor's own shape: the picture fills it. The HUD and menus are stretched with it.", "顯示器本身的比例：畫面將其填滿。HUD和選單隨之拉伸。"},
 };
 // (the languages of menu_i18n.h's kLangs, in its order: vk_menu_i18n.cpp takes both by one index)
 inline constexpr Lang kLangs[] = {

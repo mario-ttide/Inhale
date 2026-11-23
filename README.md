@@ -30,6 +30,7 @@ v0.4.0 drew the scene black in play, on every graphics card (issues #18 and #19)
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies, keyboard and saves | ✅ Work |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
+| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in the next version: the world wider, the HUD and menus stretched. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play) |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
@@ -109,9 +110,18 @@ controller, on every kind of controller (HD rumble, a DualSense's haptics, an Xb
 play on one DualSense on a cable and one over Bluetooth: a second DualSense on the same link rumbles with its motors.
 Motion controls follow the controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
 
+**Ultrawide and other shapes.** On a 21:9 or 32:9 screen the game shows more of the world at the sides, as tall as
+on a 16:9 screen. The HUD, the menus and the movies are made for 16:9, so they are stretched to the screen's width, a
+third wider at 21:9 and twice as wide at 32:9. A 16:10 or 4:3 screen works the same way, and shows less at the sides.
+**Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with
+bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as
+3440 x 1440 or 5120 x 1440. The environment variable `HOS_ASPECT` sets a ratio, such as `HOS_ASPECT=2.3889`.
+
 **Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
-and at 2560 x 1440 on any other screen. The game's dynamic resolution is off, so the size stays fixed; set the
-environment variable `HOS_DYNAMIC_RES=1` to let the game lower it under load. The handheld profile keeps the game's
+and at 2560 x 1440 on any other 16:9 screen. On a screen of another shape it takes that shape, at least 1440 lines high
+and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440 one. The
+game's dynamic resolution is off, so the size stays fixed; set the environment variable `HOS_DYNAMIC_RES=1` to let the
+game lower it under load. The handheld profile keeps the game's
 own smaller sizes and its steps, for a slower PC. After you update
 Inhale Builder, choose **Update an existing game folder** to build your folder again with the new version.
 

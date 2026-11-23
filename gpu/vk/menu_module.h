@@ -43,6 +43,7 @@ int upscaler();   // (the upscaler that runs now, upscaler_rows.h's: what the Up
 unsigned upscalers_available();   // (one bit per upscaler that runs here: upscaler_rows.h bit)
 void env_release(const int* value);   // (a row the environment held for the run, set by the menu: saved from now on)
 void weak_laptop_apply();   // (Set up for a weak laptop: Minimum's rows and lighter still, the restart asked, saved)
+bool menu_oot_rows();   // (inhale) the other game runs, or no game said which yet (vk_menu.cpp oot_rows): its texts, not this game's
 extern bool laptop_applied;   // (it was, this run)
 void bug_report_save();   // (the Bug report: gathered from the whole menu, written on a thread: vk_bug_report.h)
 void menu_restart_game();   // (the game started again: its window closes, host/hos_relaunch.c starts it; the menu saved first)
