@@ -24,7 +24,7 @@ Early. One player has played it by hand on Linux; the Windows installer has been
 v0.4.0 drew the scene black in play, on every graphics card (issues #18 and #19), and was withdrawn: use v0.4.1.
 
 v0.4.0 and v0.4.1 showed the save icon but kept nothing: each start began from the progress of before v0.4.0
-(issue #24; not a problem of permissions). The next version saves again. The last session played on v0.4.x is still
+(issue #24; not a problem of permissions). v0.5.0 saves again. The last session played on v0.4.x is still
 in a work folder. To keep it, close the game and replace what is in the save with it **before the first start of the
 fixed version**; starting v0.4.x again first replaces it with the old save:
 
@@ -41,9 +41,9 @@ sessions are lost.
 | Later worlds | ❓ Not played yet |
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies and keyboard | ✅ Work |
-| Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in the next version; see below to bring back the last session's |
+| Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in v0.5.0; see below to bring back the last session's |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
-| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in the next version: the world wider, the HUD and menus at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play) |
+| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD and menus at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play) |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
