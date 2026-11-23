@@ -12,7 +12,7 @@ runs (which counted fence stalls in the log) and still drew the scene black on e
 ## When
 
 - **Before every push** of a change that reaches the game (`host/`, `gpu/`, `nx2/`, a sync): this PC's two GPUs.
-- **Before a release** (a tag and its push): this PC's two GPUs and the Windows PC's two.
+- **Before a release** (a tag and its push): this PC's two GPUs, the Windows PC's two and the Intel PC's integrated one.
 - Not for a push of documents or checks alone, and not after each edit: the walks cost minutes.
 
 A GPU that cannot be reached is named in the report as not run, never left out in silence, and the push or the
@@ -35,6 +35,12 @@ Windows) needs 300 s more on its first run: run it once to warm the cache, then 
    TRACE=`; it builds first.
 2. **The Windows PC** (releases only), both GPUs, with a Windows build of the same tree (exe and DLL). Its scripts,
    folders and build recipe are in the agent's notes for this project, not here.
+3. **The Intel PC** (releases only, since v0.5.0): its Intel integrated GPU, the one Intel driver for Windows in the
+   walks (the renderer takes paths of its own there, such as the float atomic add's). The integrated GPU's 240 s,
+   with the same Windows build. Which PC and how to reach it are in the agent's notes; its device number is read
+   from the log's `vk: device <n>:` lines on the first run and kept there. The first release it walks has no
+   reference: walk the last release and the candidate, look at both runs' shots, compare the two with each other,
+   and keep the last release's walk as the reference when both draw right.
 
 ## The check
 
