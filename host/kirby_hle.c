@@ -96,9 +96,12 @@ HLE(_ZN2nn2pl21GetBuiltInFontDataSetEPiPNS0_20BuiltInFontDataOunceEPKNS0_20Built
 
 /* ---- nn::fs ------------------------------------------------------------------------------------------------------------ */
 /* nn::fs::CommitSaveData(char const*) -> Result: SDK 19's name of nn::fs::Commit. The lifted one finds no file system of
-   its own for "save" and aborts (the game's first save, main+0x8b999c). Files under save: are the host's, written as the
-   game writes them (nn_fs.c): there is nothing to commit. */
-HLE(_ZN2nn2fs14CommitSaveDataEPKc) { RET(0); }
+   its own for "save" and aborts (the game's first save, main+0x8b999c). Since the upstream v3.1.1 sync nn_fs.c stages a
+   save: the game writes into <user>/save-work/<uid>, Commit publishes that into <user>/save/<uid>, and each mount starts
+   the work copy again from save/<uid>. So this is Commit, and its result (0, or 0x2EE202 when publishing failed). Answering
+   0 alone, as when files were written in place, published nothing: every start lost the last one's progress (#24). */
+void imp__ZN2nn2fs6CommitEPKc(Ctx *c);   /* nn_fs.c */
+HLE(_ZN2nn2fs14CommitSaveDataEPKc) { imp__ZN2nn2fs6CommitEPKc(c); }
 
 /* ---- nn::codec: the VP9 decoder's names of SDK 19, on nn_video.c's functions (which have SDK 22's) --------------------- */
 /* The game's movie player (main+0x4374xx to +0x437fxx; the opening movie is the first) demuxes WebM with the lifted

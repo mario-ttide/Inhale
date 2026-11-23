@@ -416,7 +416,13 @@ What stopped the first frame, and the fix:
    `nx2/ui_fonts.py`'s file into the program too. The entry layout (0x18 bytes: type, flag, address at 8, size at 16)
    is read from the lifted `sdk+0x4fc650`.
 2. `nn::fs::CommitSaveData("save")`, SDK 19's name of `nn::fs::Commit`, aborted in the lifted SDK after the game wrote
-   its first `save:/system`, `file0` to `file2`. HLE answers 0.
+   its first `save:/system`, `file0` to `file2`. The HLE first answered 0, when `host/nn_fs.c` wrote save files in
+   place. The upstream v3.1.1 sync (`7c44554`, in v0.4.0 and v0.4.1) made saves staged: the game writes into
+   `<user>/save-work/<uid>`, `nn::fs::Commit` publishes that into `<user>/save/<uid>`, and each `MountSaveData`
+   starts the work copy again from `save/<uid>`. With the HLE still answering 0, nothing was published, and every
+   start lost the last one's progress (issue #24). The HLE now calls `nn::fs::Commit`'s and returns its result;
+   `tests/test_kirby_save_commit.py` builds `nn_fs.c` with it and checks a written file reaches `save/<uid>` and a new
+   mount.
 
 3. Every text was upside down, pane by pane. The game draws each text into a small texture of its own and then draws
    that texture. It never calls `nvnDeviceSetWindowOriginMode`, so its origin is NVN's default, the lower left, where
