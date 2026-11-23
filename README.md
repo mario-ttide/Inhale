@@ -111,7 +111,7 @@ play on one DualSense on a cable and one over Bluetooth: a second DualSense on t
 Motion controls follow the controller used last. Xbox controllers read through XInput, when SDL is missing, all stay the first player's.
 
 **Ultrawide and other shapes.** On a 21:9 or 32:9 screen the game shows more of the world at the sides, as tall as
-on a 16:9 screen. The HUD, the menus and the movies are made for 16:9, so they are stretched to the screen's width, a
+on a 16:9 screen, and the enemies there move as smoothly as in the middle. The HUD, the menus and the movies are made for 16:9, so they are stretched to the screen's width, a
 third wider at 21:9 and twice as wide at 32:9. A 16:10 or 4:3 screen works the same way, and shows less at the sides.
 **Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with
 bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as

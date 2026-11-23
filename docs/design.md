@@ -2102,6 +2102,37 @@ monitor's shape, which this game now takes. They drew it right, as did a 3440 x 
 Not checked: a real 21:9 or 32:9 screen, a window (the runs are headless), stages past S5's walk,
 the save and photo pictures (whether a picture the game takes of the scene is now wider), and how a 32:9 HUD reads.
 
+**2026-11-23, after the first report: objects at the sides at 15 a second.** The reporter played the nightly at
+5120 x 1440: the world was wide, but the enemies beside the middle 16:9 moved at a lower rate. The update levels
+("far objects at 30 and 15 updates a second", above) put an object whose sphere is outside the view at level 2 (one
+frame in four). `f_80901dc0` (main+0x8e1dc0) makes two kinds of test with `f_80648380` (main+0x628380). The pair at
+main+0x8e1ffc and main+0x8e20b0 reads the planes at world+0x210. The pair at main+0x8e21c8 and main+0x8e224c, the one
+that gives level 2, reads world+0x300. `f_807bf0c0` (main+0x79f0c0) builds both each frame with the frustum builder
+`f_80647680` (main+0x627680: s0 the vertical angle, s1 the aspect, s2 near, s3 far). A probe of the builder's inputs at
+5120 x 1440 (`work/runs/w20/probe32.txt`) showed:
+- world+0x210 (from main+0x79f448): 80 degrees and an aspect of about 2.12 that follows the camera, so it is already wide;
+- world+0x300 (from main+0x79f4a8): 50 degrees and exactly 16 / 9;
+- another caller (main+0x7a8080, main+0x7a80dc) builds the same pair for another object.
+
+The fix: a fourth site in `nx2/kirby_wide.py`, C after the builder's first instruction (an `adrp x8`, which leaves s1)
+that hands s1 to `kirby_wide_aspect`. Every 16:9 frustum the builder makes takes the screen's ratio; the wide one is
+not 16:9 and is left. Measured with a counter on main+0x8e224c's result over S5's walk (`work/runs/w20/cull_*.txt`, a
+temporary edit of the lifted C, not kept), 80 000 tests each:
+
+| run | tests judged outside |
+|---|---|
+| 5120 x 1440, before | 52 756 (66%) |
+| 5120 x 1440, after | 41 101 (51%) |
+| 3840 x 2160, after (16:9, ratio 0) | 68 351 of 100 000 (68%, as before: 68 331) |
+
+Shots of every present over 60 presents (the beach at present 900 and the forest at 3000) could not show it: the
+foliage at the sides changes every present either way, and S5's walk has no enemy beside the middle. Test:
+`tests/test_kirby_wide.py` builds a builder of the game's shape with the installed hook and sees a sphere beside the
+16:9 view at 32:9 and 21:9, not at 16:9. Before the fix it printed `install: 3 sites, expected 4` and `frustum at
+ratio 3.555556: 0 1, expected 1 1`.
+
+Not checked: a stage with enemies at the sides (the reporter's), and the cost of more objects at full rate at 32:9.
+
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
 The reporter has a 144 Hz screen. They find frame generation's ghosting too strong and ask for a real frame rate above 60.

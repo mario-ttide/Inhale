@@ -11,11 +11,18 @@ and main+0x80e20c's divide) gives host/kirby_wide.c's ratio instead, when the as
 picture of another shape (hos_wide_ratio, host/hos_main.c). The vertical angle stays the game's, so a 21:9 screen shows
 more at the sides and nothing less above and below. A 16:9 screen, or a camera of another aspect, keeps the game's.
 
+The fourth place is not a camera: the frustum builder (main+0x627680; s0 the vertical angle, s1 the aspect, s2 near, s3
+far) that main+0x79f0c0 calls each frame for the planes at world+0x300. The update levels test each object's spheres
+against those planes (main+0x628380 from main+0x8e1dc0), and an object outside them updates at 30 or 15 a second
+(docs/design.md, "far objects at 30 and 15 updates a second"). Its aspect is 16 / 9 from data the camera hooks do not
+reach, so at 32:9 the objects beside the middle 16:9 were judged out of view. C after its first instruction (an adrp,
+which leaves s1) gives the builder the screen's ratio too; its other callers' 16:9 frustums widen the same way.
+
 The lead came from Fl4sh9174's 21:9 mod for the Switch 1 game, whose notes say the game takes the camera's ratio from one
 size pair (a mov / movk of 2580 x 1080 in place of 1920 x 1080). That pair has no twin here: each 16:9 size constant of
 this build was rewritten in turn and none moved the cameras (docs/design.md, "issue #20"). Nothing of the mod is copied.
 
-Gated on main's build id and the three words; another build leaves it out, and says so.
+Gated on main's build id and the four words; another build leaves it out, and says so.
 """
 
 BUILD_ID = "395fc326c2e5b1651d937074f8cfd75de63184d9"
@@ -24,6 +31,7 @@ SITES = (
     (0x74dc80, 0xbd401109, 9),   # ldr s9, [x8, #0x10]   (the builder at main+0x74dc50)
     (0x74dd80, 0xbd401108, 8),   # ldr s8, [x8, #0x10]   (the builder at main+0x74dd4c)
     (0x80e20c, 0x1e211800, 0),   # fdiv s0, s0, s1       (c16's aspect: the size's width over its height)
+    (0x627680, 0xd0012be8, 1),   # adrp x8, ...          (the frustum builder's first: s1 is its aspect, not yet read)
 )
 
 

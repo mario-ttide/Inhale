@@ -2,8 +2,13 @@
 
 The hook: an aspect of 16:9 in the register becomes hos_wide_ratio, so the projection the game then builds (p00 = p11 /
 aspect, main+0x74dd4c) is the one measured in the game at 21:9 (0.8977 at p11 2.1445); another aspect, or a ratio of 0
-(a 16:9 screen), is left as the game made it. The install: three sites into the lifter's after-code, none for another
+(a 16:9 screen), is left as the game made it. The install: four sites into the lifter's after-code, none for another
 build or code. Also the build id host/hos_main.c lets through (kirby_wide_ok) is the one the lift hooks.
+
+The frustum: the update levels judge an object outside the view by the planes the frustum builder (main+0x627680) makes
+from its s0 (vertical angle) and s1 (aspect). A builder shaped like the game's (the hooks the install put at its first
+instruction, then the side plane from tan(angle / 2) x aspect) must see a sphere beside the 16:9 view but inside a
+32:9 one at 32:9, and not at 16:9.
 
     python -I -B tests/test_kirby_wide.py [--cc gcc]
 """
@@ -20,6 +25,7 @@ sys.path.insert(0, str(ROOT / "nx2"))
 import kirby_wide  # noqa: E402
 
 FIXTURE = r'''
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +34,28 @@ volatile float hos_wide_ratio;
 const char hos_main_build_id[] = BUILD;
 void kirby_wide_aspect(uint64_t *v);
 int kirby_wide_ok(void);
+typedef struct { uint64_t vreg[32][2]; } Ctx;
+/* The builder's start with the lift's after-code at main+0x627680, then one side plane: visible when the sphere's
+   distance to it is under its radius */
+static int builder_sees(Ctx *c, float x, float z, float r) {
+    FRUSTUM_HOOK
+    float angle, aspect;
+    memcpy(&angle, &c->vreg[0][0], 4);
+    memcpy(&aspect, &c->vreg[1][0], 4);
+    const float h = atanf(tanf(angle * 0.5f) * aspect);
+    return x * cosf(h) - z * sinf(h) < r;
+}
 int main(int argc, char **argv) {
+    if (argc > 1 && !strcmp(argv[1], "frustum")) {
+        hos_wide_ratio = (float)atof(argv[2]);
+        Ctx c = {{{0}}};
+        uint32_t angle = 0x3f5f66f4u, aspect = 0x3fe38e39u;   /* world+0x300's: 50 degrees, 16 / 9 (probed at 32:9) */
+        memcpy(&c.vreg[0][0], &angle, 4);
+        memcpy(&c.vreg[1][0], &aspect, 4);
+        /* at 10 ahead the half-width is 8.29 at 16:9 and 16.58 at 32:9: a sphere of radius 1 at 12 is between */
+        printf("%d %d\n", builder_sees(&c, 12.0f, 10.0f, 1.0f), builder_sees(&c, 4.0f, 10.0f, 1.0f));
+        return 0;
+    }
     hos_wide_ratio = (float)atof(argv[1]);
     float a = (float)atof(argv[2]), p11 = 2.1445f;
     if (argc > 3) a = 16.0f / 9.0f;
@@ -57,14 +84,23 @@ class Image:
         return self.words.get(a, 0)
 
 
+def frustum_hook():
+    """The C the install puts after the frustum builder's first instruction, as the fixture's statement"""
+    base = 0x80020000
+    lifter = Lifter()
+    kirby_wide.install(lifter, Image({base + off: old for off, old, _ in kirby_wide.SITES} | {base + 0x627680: 0xd0012be8}),
+                       base, kirby_wide.BUILD_ID)
+    return lifter.after.get(base + 0x627680, "/* no hook */")
+
+
 def install_checks():
     bad = []
     base = 0x80020000
     good = {base + off: old for off, old, _ in kirby_wide.SITES}
     lifter = Lifter()
     lifter.after[base + 0x74dc80] = "/* before */"
-    if kirby_wide.install(lifter, Image(good), base, kirby_wide.BUILD_ID) != 3 or len(lifter.after) != 3:
-        bad.append("install: %d sites, expected 3" % len(lifter.after))
+    if kirby_wide.install(lifter, Image(good), base, kirby_wide.BUILD_ID) != 4 or len(lifter.after) != 4:
+        bad.append("install: %d sites, expected 4" % len(lifter.after))
     if not lifter.after[base + 0x74dc80].startswith("/* before */\n"):
         bad.append("install: the code already after main+0x74dc80 was not kept first")
     for off, _, reg in kirby_wide.SITES:
@@ -85,7 +121,7 @@ def main():
     bad = install_checks()
     with tempfile.TemporaryDirectory(prefix="kirby-wide-") as tmp:
         exe = Path(tmp) / "fixture.exe"
-        (Path(tmp) / "fixture.c").write_text(FIXTURE, encoding="utf-8")
+        (Path(tmp) / "fixture.c").write_text(FIXTURE.replace("FRUSTUM_HOOK", frustum_hook()), encoding="utf-8")
         for build, ok in ((kirby_wide.BUILD_ID, "1"), ("e0f3ccfaf50065ae4ea01eb5aeb13b1a45da3348", "0")):
             subprocess.run([args.cc, "-std=c11", "-DBUILD=\"%s\"" % build, str(Path(tmp) / "fixture.c"),
                             str(ROOT / "host/kirby_wide.c"), "-o", str(exe), "-lm"], check=True)
@@ -102,9 +138,16 @@ def main():
                 if got != expect:
                     bad.append("build %.8s, ratio %s aspect %s: %s, expected %s" % (
                         build, argv[0], "16/9" if len(argv) > 2 else argv[1], got, expect))
+            # (ratio) -> the sphere beside the 16:9 view seen, a sphere inside it seen
+            for ratio, expect in (("3.555556", "1 1"), ("0", "0 1"), ("2.388889", "1 1")):
+                got = subprocess.run([str(exe), "frustum", ratio], capture_output=True, text=True,
+                                     check=True).stdout.strip()
+                if got != expect:
+                    bad.append("build %.8s, frustum at ratio %s: %s, expected %s" % (build, ratio, got, expect))
     if bad:
         raise SystemExit("FAIL:\n  " + "\n  ".join(bad))
-    print("PASS: 16:9 cameras at 21:9, 32:9 and 16:10, others and a 16:9 screen left; 3 sites, none for another build or code")
+    print("PASS: 16:9 cameras at 21:9, 32:9 and 16:10, others and a 16:9 screen left; the update levels' frustum as wide;"
+          " 4 sites, none for another build or code")
 
 
 if __name__ == "__main__":
