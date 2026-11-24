@@ -208,7 +208,7 @@ static LONG CALLBACK commit_on_touch(EXCEPTION_POINTERS *info) {
        its signal handler never sets 8, so there every SIGSEGV and SIGBUS in the window would be tried again forever, at 100% CPU,
        rather than reach report_crash.
        (inhale) The import fence (gpu/vk/import_fence_inhale.h) gives the page after an import's range PAGE_EXECUTE_READWRITE for
-       the length of one driver call: a data fault pending on that page when another thread committed it is tried again as for a
+       the length of the import's driver calls: a data fault pending on that page when another thread committed it is tried again as for a
        read-write page. Still exact protections, so a guard or no-cache page is not, and still not an execute fault) */
     if (mbi.State == MEM_COMMIT && (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE) && rec->ExceptionInformation[0] != 8)
         return EXCEPTION_CONTINUE_EXECUTION;

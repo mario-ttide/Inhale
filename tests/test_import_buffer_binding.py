@@ -34,7 +34,7 @@ def main():
     cases = [(route, case) for route in ["host", "dma"] for case in [
         "healthy", "create-error", "allocate-error", "host-oom", "device-oom", "unknown-bind"]]
     cases += [("host", "hold-retry"), ("host", "properties-error"), ("host", "per-pointer-type"), ("host", "buffer-type-bits"),
-              ("host", "buffer-too-big"), ("dma", "sparse-delegation"), ("dma", "nvidia")]
+              ("host", "buffer-too-big"), ("host", "fence-off"), ("host", "watch"), ("dma", "sparse-delegation"), ("dma", "nvidia")]
     with tempfile.TemporaryDirectory(prefix="import-buffer-binding-") as temp:
         cpp = Path(temp) / "fixture.cpp"
         cpp.write_text(fixture, encoding="utf-8")

@@ -7,6 +7,11 @@
 // or 64 MB), on the thread that replays the frame: every frame over 40 ms of the walk was one. Linux has no such walk
 // (the RX 7900 XTX's imports take under 2 ms).
 //
+// Which call asks is the driver's choice, so the fence stands for both of a host pointer's (import_pool, vk_memory.cpp): from
+// before vkGetMemoryHostPointerPropertiesEXT until the import returns, vkAllocateMemory between them. AMD's Windows driver
+// for the RX 7900 XTX (26.10.1, 26.11.2) walks in the first: with the fence around the allocation alone, as it was until
+// 2026-11-24, that call took 16 ms on average and up to 33 (the log's "commit+properties"), and 0.07 ms with it.
+//
 // While the driver is asked, the page after the range has another protection that reads and writes the same,
 // PAGE_EXECUTE_READWRITE, so the run from the range's start ends with the range; then it has its own back. Only a
 // committed PAGE_READWRITE page is changed: anything else (reserved, a write watch's read-only page) already ends the run.

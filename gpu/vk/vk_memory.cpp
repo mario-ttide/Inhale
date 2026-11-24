@@ -486,6 +486,16 @@ bool import_pool(uint64_t lo, uint64_t hi, Pool& p) {
         return true;
     }
 #endif
+    // (inhale, import_fence_inhale.h) the driver's questions about the pointer walk the game's memory from here to the end of its
+    // run of read-write pages: the page after the range ends the run while they are asked, from the memory types' below
+    // (vkGetMemoryHostPointerPropertiesEXT: where AMD's Windows driver walks for an RX 7900 XTX) to the allocation's
+    // (vkAllocateMemory: where NVIDIA's walks, and AMD's for a Radeon 780M), until this returns. A dma-buf import above has
+    // none. Not with the CPU write watches, which change protections themselves. RX_VK_IMPORT_FENCE=0: off
+    static const bool fence_on = [] {
+        const char* v = getenv("RX_VK_IMPORT_FENCE");
+        return !v || !env_value_off(v);
+    }();
+    const InhaleImportFence fence(ptr, bytes, fence_on && !page_watches);
     // (the memory types this pointer can be imported as: asked for each pointer, the driver answers per pointer)
     VkMemoryHostPointerPropertiesEXT hp{VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
     // (#859: each driver refusal leaves its VkResult in import_result, for pool_lookup's "not imported" line)
@@ -534,18 +544,7 @@ bool import_pool(uint64_t lo, uint64_t hi, Pool& p) {
     ai.pNext = &im;
     ai.allocationSize = bytes;
     ai.memoryTypeIndex = type;
-    // (inhale, import_fence_inhale.h) the driver's question about the pointer walks the game's memory from here to the end of its
-    // run of read-write pages: the page after the range ends the run while it is asked. Not with the CPU write watches, which
-    // change protections themselves. RX_VK_IMPORT_FENCE=0: off
-    static const bool fence_on = [] {
-        const char* v = getenv("RX_VK_IMPORT_FENCE");
-        return !v || !env_value_off(v);
-    }();
-    VkResult allocated;
-    {
-        const InhaleImportFence fence(ptr, bytes, fence_on && !page_watches);
-        allocated = vkAllocateMemory(dev.device, &ai, nullptr, &p.memory);
-    }
+    const VkResult allocated = vkAllocateMemory(dev.device, &ai, nullptr, &p.memory);
     t3 = clk::now();
     const VkResult bound = allocated == VK_SUCCESS ? vkBindBufferMemory(dev.device, p.buffer, p.memory, 0) : allocated;
     if (bound != VK_SUCCESS) {

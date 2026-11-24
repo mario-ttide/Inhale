@@ -9,8 +9,8 @@ On Windows a second fixture takes the game's first-touch handler as it is (host/
 it a data fault on the page the real fence holds, as when a guest thread faulted on that page just before another thread
 committed it and the importer fenced it: the access is tried again (EXCEPTION_CONTINUE_EXECUTION), with the fence and
 after it. An execute fault there, a guard page and a write watch's read-only page are not tried again.
-No Vulkan or game data. That the import's allocation is made behind the fence, and a dma-buf's without one, is
-tests/import_buffer_binding_test.cpp's.
+No Vulkan or game data. That the import's questions to the driver, its memory types and its allocation, are made behind
+the fence, and a dma-buf's without one, is tests/import_buffer_binding_test.cpp's.
 python -I -B tests/test_import_fence.py [--cxx g++]
 """
 import argparse

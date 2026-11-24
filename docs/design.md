@@ -1884,6 +1884,50 @@ The 780M runs at about 45 fps here, so its count over 25 ms is the frame rate's,
 are the level's load (frames 690-733, 80-320 ms) and one 109 ms frame of GPU time in one run. Not measured: Intel on
 Windows, NVIDIA cards other than the 2080, a long session.
 
+### 2026-11-24: the same walk in another call on the RX 7900 XTX; the fence covers both
+
+A player's report: v0.5.1 stutters on Windows and not on Linux, same PC, same RX 7900 XTX (Windows 11 in a VM with the
+card passed through, 8 logical processors, AMD driver 26.10.1 and 26.11.2). The five logs of the install said why: 128
+of 133 `vk: slow submit` lines come straight after a `vk: pool ... imported in N ms` line, each session has 120-154
+imports with 97-128 of them over 10 ms (mean 14-32 ms), and the `vk: import N ms:` lines put the time in
+`commit+properties` (20-34 ms), not in `allocate` (1-6 ms). So the import fence of 2026-11-21 was standing, and around
+the wrong call for this driver: it covered `vkAllocateMemory` alone.
+
+A build with a time point between the two halves of `commit+properties`, the fence as released, the same walk headless
+at 2560x1440 (123 imports): the commit (`VirtualAlloc`) took 0.04 ms on average and 0.57 at most;
+`vkGetMemoryHostPointerPropertiesEXT` took 16.4 ms on average and up to 33.4, 95 of 123 over 10 ms. With a fence around
+that call too: 0.07 ms on average, 0.43 at most. So this driver asks Windows about the pointer when it is asked for the
+pointer's memory types, and pays the same walk there that NVIDIA's driver, and AMD's for the Radeon 780M, pay in the
+allocation.
+
+The fix: `import_pool` makes the fence before `vkGetMemoryHostPointerPropertiesEXT` and it stands until the import
+returns, so both calls are behind it (a dma-buf import, tried first on Linux, has none). `RX_VK_IMPORT_FENCE=0` still
+turns it off. Two rounds, release DLL and fixed DLL in turn, the same walk, 100 s, driver 26.11.2, frames from 800 on
+(play):
+
+| run | imports of 2 ms or more | their mean | slow submits | frames > 25 ms | frames > 40 ms |
+|---|---|---|---|---|---|
+| v0.5.1 (2 runs) | 114, 114 | 17.6, 17.5 ms | 13, 12 | 11, 12 | 3, 3 |
+| fixed (2 runs) | 6, 9 | 2.8, 2.7 ms | 2, 1 | 0, 0 | 0, 0 |
+
+The frames over 25 ms of the v0.5.1 runs are the same eleven in both (2402 to 2638, 35-60 ms; the second run has one
+more, 1351, 26.7 ms), and the fixed runs have none there. The first run of the fixed DLL is not in the table: it had 5
+imports of 5-13 ms late in the walk, 19 slow submits (the ones read were draw and command time, not imports) and 5
+frames over 25 ms, none over 40; the two runs after it did not repeat that, and its cause was not looked into. Not
+measured: bare metal (the runs are the VM's), driver 26.10.1 with the fix, the 2080 and the 780M with the longer fence
+(their allocation is behind the fence as before; `tests/test_import_fence.py` passed on the VM).
+
+`tests/import_buffer_binding_test.cpp` counts the questions about the pointer made while a fence stood: every
+host-pointer import asks for its memory types and allocates behind one fence, and with `RX_VK_IMPORT_FENCE=0` or a CPU
+write watch none stands. Before the fix: ``Assertion `!fence_up && fenced_properties == fences && fenced_allocations ==
+(fenced ? host_allocations : 0)' failed``.
+
+The fence now stands for the whole import, not for one call, which widens what could already happen: a commit over the
+fenced page by another thread (`hos_commit`, `commit_on_touch`'s 64 KB, another import's) gives it read-write back, and
+that one import walks again (slow, not wrong; the fence's end copes). With the background imports, off by default
+(`RX_VK_ASYNC_IMPORT`, `RX_VK_PREFETCH_CHUNKS`, `RX_VK_BG_IMPORT`), one import's fence can be the first page of a
+neighbour's range while that one is asked. Neither was seen.
+
 ### 2026-11-21: a shader preparation that the program cache lost (HeyListen c795788f, 8a629e6c)
 
 `inhale_prepared.bin` said what the shaders were prepared for (the translator, the seed, the driver's part), not

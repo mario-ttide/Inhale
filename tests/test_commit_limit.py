@@ -64,7 +64,7 @@ def main():
         raise SystemExit("FAIL: the first-touch handler does not wait at the commit limit")
     # (the retry of a page another thread committed is Windows' only: on Linux the VirtualQuery stand-in calls every guest page
     # committed and read-write and the signal handler never sets 8, so every fault in the window would be tried again forever)
-    # (inhale: and a page the import fence holds, PAGE_EXECUTE_READWRITE for one driver call: gpu/vk/import_fence_inhale.h, its
+    # (inhale: and a page the import fence holds, PAGE_EXECUTE_READWRITE for an import's driver calls: gpu/vk/import_fence_inhale.h, its
     # fixture in tests/test_import_fence.py delivers such a fault while the real fence stands)
     retry = ("if (mbi.State == MEM_COMMIT && (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_EXECUTE_READWRITE) && "
              "rec->ExceptionInformation[0] != 8)")

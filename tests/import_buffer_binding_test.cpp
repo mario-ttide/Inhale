@@ -49,14 +49,19 @@ std::vector<char> release_order;
 constexpr VkBufferUsageFlags kUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 bool failing(Fault f, int kind) { return fault == f && (fail_kind == EveryMemory || fail_kind == kind); }
 void logf(const char*, ...) {}
-const char* getenv(const char*) { return nullptr; }
+const char *fence_env = nullptr, *watch_env = nullptr;   // (inhale: RX_VK_IMPORT_FENCE's value and RX_VK_WATCH_CPU's; no other switch is set)
+const char* getenv(const char* name) {
+    const std::string n = name;
+    return n == "RX_VK_IMPORT_FENCE" ? fence_env : n == "RX_VK_WATCH_CPU" ? watch_env : nullptr;
+}
 bool env_on(const char* name) { const char* v = getenv(name); return v && !env_value_off(v); }   // (the switches through the stand-in)
 using SIZE_T = size_t;
 constexpr int MEM_COMMIT = 1, MEM_RESERVE = 2, PAGE_READWRITE = 4;
 struct MEMORY_BASIC_INFORMATION { uint8_t* BaseAddress; size_t RegionSize; int State; };
 void* VirtualAlloc(void* p, size_t, int, int) { return p; }
-// (inhale: import_fence_inhale.h's stand-in: how many stood, and how many allocations were made while one did)
-unsigned fences = 0, fenced_allocations = 0;
+// (inhale: import_fence_inhale.h's stand-in: how many stood, and how many of a host pointer's two questions to the driver, its
+// memory types and its allocation, were made while one did)
+unsigned fences = 0, fenced_allocations = 0, host_allocations = 0, property_asks = 0, fenced_properties = 0;
 bool fence_up = false;
 struct InhaleImportFence {
     const bool on;
@@ -65,6 +70,7 @@ struct InhaleImportFence {
 };
 size_t VirtualQuery(void*, MEMORY_BASIC_INFORMATION*, size_t) { return 0; }
 VkResult vkGetMemoryHostPointerPropertiesEXT(VkDevice, VkExternalMemoryHandleTypeFlagBits, const void*, VkMemoryHostPointerPropertiesEXT* hp) {
+    property_asks++; if (fence_up) fenced_properties++;   // (inhale)
     if (fault == Fault::Properties) return VK_ERROR_OUT_OF_HOST_MEMORY;
     hp->memoryTypeBits = host_bits[std::min(property_calls++, 1u)]; return VK_SUCCESS;
 }
@@ -82,6 +88,7 @@ VkResult vkCreateBuffer(VkDevice, const VkBufferCreateInfo* ci, const VkAllocati
 VkResult vkAllocateMemory(VkDevice, const VkMemoryAllocateInfo* ai, const VkAllocationCallbacks*, VkDeviceMemory* out) {
     allocations++; if (ai) allocated_type = ai->memoryTypeIndex; *out = handle<VkDeviceMemory>(0xbeef);
     if (fence_up) fenced_allocations++;   // (inhale)
+    if (ai) host_allocations++;   // (inhale: dma_buf_memory, the dma-buf's allocation, passes none)
     if (failing(Fault::Allocate, allocation_kind)) return VK_ERROR_OUT_OF_HOST_MEMORY;
     *out = handle<VkDeviceMemory>(next_id++); memories.insert(*out); return VK_SUCCESS;
 }
@@ -154,6 +161,8 @@ void run(const std::string& route, const std::string& test) {
     if (test == "device-oom" || test == "dma-bind-fallback" || test == "both-bind-fail" || test == "hold-retry") fault = Fault::DeviceOOM;
     if (test == "unknown-bind") fault = Fault::Unknown;
     if (test == "properties-error") fault = Fault::Properties;
+    if (test == "fence-off") fence_env = "0";   // (inhale: the import as upstream's, healthy with no fence)
+    if (test == "watch") watch_env = "1";   // (inhale: a CPU write watch changes protections itself: no fence either)
     if (route == "pool" && test != "both-bind-fail") fail_kind = DmaMemory;
     Pool p;
     if (test == "nvidia") {   // (NVIDIA's driver refuses the window's dma-bufs: no udmabuf opened, no dma-buf tried, host pointers)
@@ -188,10 +197,8 @@ void run(const std::string& route, const std::string& test) {
     }
     const bool success = call(route, p);
     assert(owner_releases == destroyed_buffers);   // Every factory rollback preserves main's owner hook.
-    // (inhale) a host-pointer import's allocation is made behind the fence, a dma-buf's without one, and none is left standing
-    assert(!fence_up && fences == fenced_allocations && (route != "dma" || fences == 0));
-    if (test == "healthy" || (route == "pool" && test != "both-bind-fail")) {
-        assert(route == "dma" || fences == 1);   // (inhale)
+    if (test == "healthy" || test == "fence-off" || test == "watch" || (route == "pool" && test != "both-bind-fail")) {
+        assert(route == "dma" || fences == (fence_env || watch_env ? 0u : 1u));   // (inhale)
         assert(success && p.buffer && p.memory && p.address && address_queries == 1);
         assert(buffers.size() == 1 && memories.size() == 1 && import_holds.rows.empty());
         if (route == "pool") {
@@ -222,5 +229,13 @@ void run(const std::string& route, const std::string& test) {
 }
 } // namespace fixture
 int main(int argc, char** argv) {
-    assert(argc == 3); fixture::run(argv[1], argv[2]); return 0;
+    assert(argc == 3); fixture::run(argv[1], argv[2]);
+    // (inhale) a host-pointer import asks for its pointer's memory types and allocates behind one fence, a dma-buf is imported
+    // without one, and none is left standing: checked after every case, with its retries. RX_VK_IMPORT_FENCE=0, or a CPU write
+    // watch: none stands
+    using namespace fixture;
+    const bool fenced = !fence_env && !watch_env;
+    assert(!fence_up && fenced_properties == fences && fenced_allocations == (fenced ? host_allocations : 0));
+    assert(fences == (fenced ? property_asks : 0) && (std::string(argv[1]) != "dma" || fences == 0));
+    return 0;
 }
