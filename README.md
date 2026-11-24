@@ -67,7 +67,8 @@ installer: unzip it anywhere and start `Inhale.exe`.
 Both packages carry a `recomplauncher.json`, so [RecompLauncher](https://recomplauncher.com) can ask for your `.nup`
 or folder, build the game into its own install folder and start it, with a few of the menu's settings on its page.
 Each update builds the game again from your copy (from v0.3.1: the update to v0.3.0 kept the v0.2.0
-game; run the launcher's setup again to rebuild it). Inhale is in RecompLauncher's catalog: [recomplauncher.com/game/inhale](https://recomplauncher.com/game/inhale).
+game; run the launcher's setup again to rebuild it). The launcher's **Logs** button opens the game's log folder.
+Inhale is in RecompLauncher's catalog: [recomplauncher.com/game/inhale](https://recomplauncher.com/game/inhale).
 
 ### On Windows
 
@@ -146,6 +147,13 @@ and before, in which the crystal covering of the Star-Crossed World stages vanis
 **Sound on 5.1.** When the game mixes for 5.1, the centre channel also goes to the front pair at -3 dB, so a headset's
 virtual surround or a driver that drops the centre still plays what is on it. Set the environment variable
 `HOS_AUDIO_CENTRE=0` to keep the centre on its own channel only.
+
+### Reporting a problem
+
+Attach the game's log, `logs/inhale_log.txt` in the game folder (in RecompLauncher: the **Logs** button). Each start
+keeps the four runs before as `inhale_log.1.txt` (the last) to `inhale_log.4.txt`: if you started the game again after
+a crash, the crash is in `inhale_log.1.txt`. Up to v0.5.0, a start from RecompLauncher wrote no log there, so the file
+in that folder was an old one.
 
 ## What you need
 

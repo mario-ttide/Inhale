@@ -31,7 +31,9 @@ case "${1:-}" in
         for name in $(env | awk -F= '$1 ~ /^(INHALE_|PYTHON|APPDIR|APPIMAGE|ARGV0|OWD|RX_CPM|RX_TARGET|EMSDK|LONGSHOT_MINGW)/ || $1 == "LD_LIBRARY_PATH" { print $1 }'); do
             unset "$name"
         done
-        cd "$folder" && exec ./inhale
+        # (stderr to /dev/null: the game then writes its own logs/inhale_log.txt, as from its icon, rather than into the
+        # launcher's pipe, where the player never finds it. docs/design.md, "The game's log on a launcher start")
+        cd "$folder" && exec ./inhale 2>/dev/null
         ;;
 esac
 exec "$PY" -I "$SRC/packaging/gui/inhale_builder.py" "$@"

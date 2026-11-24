@@ -308,6 +308,19 @@ with a fixed `"1"` the v0.3.0 update kept playing the v0.2.0 build. Its ten sett
 and XeSS reach this game only through the Upscaler row and Frame generation by, both hidden for it. No `dumps`: Redump
 and No-Intro list no `.nup`. `tests/test_recomplauncher_inhale.py` checks all of this against the sources.
 
+**The game's log on a launcher start.** `host/hos_main.c` (upstream's gate) writes `logs/inhale_log.txt`, with its
+rotation, redaction and the crash dialog's reading of it, only when the game's stderr is nowhere (`FILE_TYPE_UNKNOWN`:
+none, or `/dev/null`) or, on Linux, Steam's pipe; any other stderr is taken as one the player chose. RecompLauncher
+hands the program it starts a pipe and keeps what comes through in
+`%APPDATA%\com.recomplauncher.app\game-output\inhale.log`, where no player looks: #21 sent the folder's
+`inhale_log.txt` from an earlier icon start, and the crash dialog (#8, #13) read no log ("the log names no Vulkan
+device"). So `--play` gives the game no stderr: `Inhale.exe` passes a NULL `hStdError`, `AppRun` `2>/dev/null`, and
+the game logs as from its icon; stdout still goes to the launcher. `--cli` keeps its stderr, where the launcher reads
+the preparation. A restart (`host/hos_relaunch.c`) passes on only a stderr that was not `FILE_TYPE_UNKNOWN`, so it too
+starts as from the icon. The manifest's `folders.logs` is `{install}/Inhale/logs`, opened by the Logs action, as
+RecompLauncher's guide asks. Its crash view takes the newest `.log` there, and ours is `.txt`: left so, since the name
+is upstream's (`hos_main.c` and the bug report read it).
+
 Everything downloaded is in `packaging/pins.txt` (name, version, system, URL, SHA-256), fetched and checked by
 `packaging/fetch.py` into `work/pkg/dl`; the versions are upstream's at `9af4808f` (LLVM 23.1.5, llvm-mingw 20261104,
 Python 3.12.16, FFmpeg 9.0.2, dav1d 1.5.4, SDL 2.32.10 / 3.4.20 / sdl2-compat 2.32.74, Vulkan-Headers v1.4.345,

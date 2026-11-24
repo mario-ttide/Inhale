@@ -154,6 +154,42 @@ class RecompLauncherInhaleTests(unittest.TestCase):
         self.assertIn(r'L"%ls\\gui\\inhale_builder.py"', c)
         self.assertNotIn("CP_ACP", c)
 
+    def test_play_gives_the_game_no_stderr(self):
+        # (#21: a launcher start handed the game the launcher's stderr pipe, so the game wrote no logs/inhale_log.txt
+        # (host/hos_main.c logs to a file only for a stderr of FILE_TYPE_UNKNOWN) and the player sent an old one. --play
+        # gives none; --cli keeps it, the launcher reads the preparation's progress there)
+        c = read("packaging", "windows", "inhale_launch.c")
+        self.assertIn("si.hStdError = err;", block(c, "static int run("))
+        cli = between(c, 'if (argc >= 2 && !wcscmp(argv[1], L"--cli")) {', 'if (argc >= 2 && !wcscmp(argv[1], L"--play")) {')
+        self.assertIn("TRUE, GetStdHandle(STD_ERROR_HANDLE));", cli)
+        play = between(c, 'if (argc >= 2 && !wcscmp(argv[1], L"--play")) {', "/* (packaging/windows/inhale.nsi")
+        self.assertIn("run(exe, cmd, path, 0, TRUE, NULL);", play)
+        self.assertIn("err_kind = (!err || err == INVALID_HANDLE_VALUE) ? FILE_TYPE_UNKNOWN", read("host", "hos_main.c"))
+        # (AppRun, run: its game's stderr is /dev/null with the caller's a pipe, which posix GetFileType calls UNKNOWN)
+        self.assertIn("S_ISCHR(st.st_mode)) return isatty(((HFile *)h)->fd) ? FILE_TYPE_CHAR : FILE_TYPE_UNKNOWN",
+                      read("host", "posix", "win32_posix.c"))
+        if not Path("/proc/self/fd/2").exists():
+            self.skipTest("no /proc")
+        with tempfile.TemporaryDirectory() as tmp:
+            game = Path(tmp) / "inhale"
+            game.write_text('#!/bin/sh\nreadlink /proc/self/fd/2 > err.txt\necho stdout-kept\n', encoding="utf-8")
+            game.chmod(0o755)
+            r = subprocess.run(["sh", str(ROOT / "packaging" / "linux" / "AppRun"), "--play", tmp],
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout, "stdout-kept\n")
+            self.assertEqual((Path(tmp) / "err.txt").read_text(encoding="utf-8").strip(), "/dev/null")
+
+    def test_logs_folder_is_where_the_game_writes(self):
+        # (RecompLauncher's guide: folders.logs is the game's log folder, opened by an action; hos_main.c writes
+        # inhale_log.txt into the game folder's logs/)
+        m = manifest()
+        out = m["start"]["args"][1]
+        self.assertEqual(m["folders"]["logs"], [{"path": out + "/logs"}])
+        self.assertIn({"id": "logs", "label": "Logs", "open": "logs"},
+                      [{k: a[k] for k in ("id", "label", "open")} for a in m["actions"]])
+        self.assertIn('memcpy(path + n, "logs", 5);', read("host", "hos_main.c"))
+
 
 if __name__ == "__main__":
     unittest.main()

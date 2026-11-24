@@ -3,7 +3,9 @@
      Inhale.exe                    the builder's window (gui\inhale_builder.py), as the installer's shortcut starts it
      Inhale.exe --cli <args>       nx2\make_game.py itself with the bundled tools, e.g. --cli --prepare --game <.nup> --out <dir>
      Inhale.exe --play [<dir>]     start the game built in <dir> (default %USERPROFILE%\Games\Inhale)
-   --cli and --play wait for their program and return its exit code; its output goes where this program's goes.
+   --cli and --play wait for their program and return its exit code; its output goes where this program's goes, except
+   the game's stderr: --play gives it none, so the game writes its own logs\inhale_log.txt (docs/design.md, "The game's
+   log on a launcher start").
    Built by packaging/windows/build.sh: x86_64-w64-mingw32-clang -O2 -mwindows -municode -static -lshell32. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -51,15 +53,16 @@ static void quote(wchar_t *cmd, const wchar_t *arg) {
     cmd[at] = 0;
 }
 
-/* start cmd in cwd (NULL: this one) with this program's standard handles; wait: its exit code, else 0. -1 if it did not start */
-static int run(const wchar_t *exe, wchar_t *cmd, const wchar_t *cwd, DWORD flags, BOOL wait) {
+/* start cmd in cwd (NULL: this one) with this program's stdin and stdout and err as its stderr (NULL: none); wait: its exit
+   code, else 0. -1 if it did not start */
+static int run(const wchar_t *exe, wchar_t *cmd, const wchar_t *cwd, DWORD flags, BOOL wait, HANDLE err) {
     STARTUPINFOW si = {0};
     PROCESS_INFORMATION pi;
     si.cb = sizeof si;
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
     si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.hStdError = err;
     if (!CreateProcessW(exe, cmd, NULL, NULL, TRUE, flags | CREATE_UNICODE_ENVIRONMENT, NULL, cwd, &si, &pi)) return -1;
     DWORD code = 0;
     if (wait) {
@@ -95,7 +98,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR line, int show) {
         quote(cmd, L"-I");
         quote(cmd, path);
         for (int i = 2; i < argc; i++) quote(cmd, argv[i]);
-        int code = run(exe, cmd, NULL, CREATE_NO_WINDOW, TRUE);
+        int code = run(exe, cmd, NULL, CREATE_NO_WINDOW, TRUE, GetStdHandle(STD_ERROR_HANDLE));   /* (the launcher reads its progress) */
         if (code == -1) say(L"Inhale: python\\python.exe did not start\n");
         return code == -1 ? 1 : code;
     }
@@ -115,7 +118,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR line, int show) {
             return 1;
         }
         quote(cmd, exe);
-        int code = run(exe, cmd, path, 0, TRUE);
+        int code = run(exe, cmd, path, 0, TRUE, NULL);   /* (no stderr: the game opens its own log, as from its icon) */
         if (code == -1) say(L"Inhale: the game did not start\n");
         return code == -1 ? 1 : code;
     }
@@ -126,7 +129,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR line, int show) {
     quote(cmd, L"-I");
     quote(cmd, path);
     for (int i = 1; i < argc; i++) quote(cmd, argv[i]);
-    if (run(exe, cmd, NULL, 0, FALSE) == -1) {
+    if (run(exe, cmd, NULL, 0, FALSE, GetStdHandle(STD_ERROR_HANDLE)) == -1) {
         MessageBoxW(NULL, L"python\\pythonw.exe did not start. Unpack the whole zip again.", L"Inhale", MB_ICONERROR);
         return 1;
     }

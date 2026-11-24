@@ -66,6 +66,11 @@
       {
         "path": "{install}/Inhale"
       }
+    ],
+    "logs": [
+      {
+        "path": "{install}/Inhale/logs"
+      }
     ]
   },
   "settings": [
@@ -342,8 +347,14 @@
     {
       "id": "game",
       "label": "Game folder",
-      "help": "The built game, with its log.",
+      "help": "The built game.",
       "open": "game"
+    },
+    {
+      "id": "logs",
+      "label": "Logs",
+      "help": "The game's log: send inhale_log.txt with a report, and inhale_log.1.txt after a crash.",
+      "open": "logs"
     }
   ]
 }
