@@ -2438,6 +2438,91 @@ are made the same way; their layers may use programs and panes not seen here); a
 blurred capture holds the menu stretched to the picture's width (as before this change); whether a pane in a corner
 of some other screen now gets a strip it should not (none in this walk: title, town, world map, stage, pause).
 
+**2026-11-25, 16:10 and 4:3: the HUD and menus at their own shape.** Issue #25's second report, two shots at
+1920 x 1200 (v0.6.0 or later: the coin counter is whole): the world round, the HUD and menus too high. The coin
+measures 38 x 45 pixels and the pause menu's dotted ring is an oval.
+
+- **Not a regression: the stated behaviour.** `kirby_wide_ui` returned for a picture not wider than 16:9, so the
+  layouts filled the 16:9 window texture and the present squeezed it to the picture's width: everything a layout
+  draws was 16:9 over the ratio too high, 1.111 at 16:10 and 1.333 at 4:3. The README called it "drawn a little
+  narrower". The part above fixed only the cut right tenth.
+- **Measured** in the shots of S5's walk with a pause at 1920 x 1200 on the tree before the change (`b1610`): the
+  coin's orange ring 38 x 44 pixels (`work/runs/i25/coin.py`: the largest orange blob at the top right), where a
+  3840 x 2160 run has 75 x 79 (0.95 wide for 1 high, against 0.86); the ellipse through the dots of the ring round the
+  pause menu's Waddle Dee count 1.278 high for 1 wide, 1.152 at 16:9 (`ring.py`; the menu's panes are 2.5D, so the
+  ring is no circle at 16:9 either), 1.532 at 1920 x 1440.
+- **Chosen.** The layouts keep their 16:9 shape at the picture's whole width, centred: the HUD then sits 5% of the
+  height further from the top and the bottom at 16:10, 12.5% at 4:3. The other way, the layouts at the picture's
+  whole height with their sides cut, loses the coin counter and the health bar. The HUD at the screen's edges
+  (upstream's `hos_wide_ui.c`) is not done for this game on any shape.
+- **The cameras** (`host/kirby_wide.c` `kirby_wide_ui`, `nx2/kirby_wide.py` `UI_HOOK`): write q for the ratio over
+  16:9 (0.9 at 16:10, 0.75 at 4:3). On a picture narrower than 16:9 a projection still at 16:9 has its second row
+  scaled by q, all four lanes, as the first is scaled by 16:9 over the ratio on a wider one. m11 over m00 is then the
+  picture's ratio on both, which is what the renderer takes for a narrowed camera (`narrowed`). Only for a picture
+  narrower by 1% at least, the renderer's own threshold: a layout lowered where the rules below do not apply would
+  leave a cutscene's bar short of the picture's edge. The hook's text changes (the second row is no longer `const`),
+  so the game's C is lifted again.
+- **The renderer's rules** (`gpu/vk/kirby_wide.h`, the same block of `draw`): every rule of the parts above has its
+  twin along y. `axis` gives 0 for a picture wider than 16:9 by 1% and 1 for one narrower by 1%; `Plan` carries it,
+  and `draw` applies the factor, the shift and the strips to the viewport's x and width or its y and height.
+
+| draw | wider picture | narrower picture |
+|---|---|---|
+| the pause background (a whole-layout pane sampling a capture of the picture's shape) | viewport wider by the ratio over 16:9 | viewport higher by 1 / q about its centre |
+| a cutscene's bar | widened the same | heightened by 1 / q: its outer edge is back on the picture's, and it takes the share of the height it has at 16:9 |
+| a full-screen movie | narrowed, the strips beside it cleared to black | lowered by q about its centre, the strips above and below cleared to black |
+| a layout's draw into a layer (a 16:9 target that is not the window texture) | widened back | heightened back by 1 / q |
+| a pane in all four corners | a left and a right strip drawn first | a strip above and one below: the scissor is the rows between the viewport's edge and the lowered pane's, the viewport as high as the device allows (`maxViewportDimensions[1]`) with the pane's outer edge on the viewport's; with a limit under twice the viewport, heightened instead |
+| a pane in one corner | moved aside by half of what the narrowing leaves; off the target in a layer | moved up or down by the viewport's height x (1 - q) / 2; off the target in a layer |
+
+  `corner_sides` along y gives the bottom and the top (1, 2) of a pane that also ends on the layout's left or right.
+  Left on both kinds of picture, as before: Copy, a hint video, a HUD pane, a pane that only touches an edge, a turned
+  pane, a program that reads no layout constants, the other game, a 16:9 picture.
+- **The viewport's y.** The layout's +y is up, and so is the camera's (m11 positive). `dynamic_state` turns a
+  viewport over (a negative height) unless the window origin is the lower left, and this game's is
+  (`nvn_origin_lower_left`: it never asks for the upper left). So the layout's top is the higher row of the target,
+  and a pane in a top corner moves by a positive number of rows. The strips, the movie's cleared rows and the factors
+  are the same either way (a pane over the whole layout is symmetric); only the corner's shift has a sense, and it is
+  written for this game's.
+- **Runs** (`work/runs/i25/`, RX 7900 XTX, headless, the shots at the picture's own size and looked at; `b*` the tree
+  before the change, `f*` with it and the game's C lifted again):
+
+| run | picture | seen |
+|---|---|---|
+| `f1610` against `b1610`, S5's walk and a pause (`g1610`: again with the tree as committed, the same numbers) | 1920 x 1200 | the coin 38 x 40 (38 x 44 before; 0.95 as at 16:9), 52 rows lower; the ring 1.149 (1.278 before, 1.152 at 16:9); health bar, hint, title and pause menu at their shape, the blur to all four edges; 60 presents a second, GPU time 0.9 ms a frame (0.8 before) |
+| `f43` against `b43`, the same | 1920 x 1440 | the coin 38 x 40 (38 x 53 before); the ring 1.150 (1.532 before); the same seen |
+| `ff1610` against `bf1610`, a first start | 1920 x 1200 | the opening movie's picture 1920 x 967 with 116 and 117 black rows (before 1920 x 1073 with 63 and 64: the file's own bars, 57 rows of 1080, stretched with it); the beach cutscene's bars 70 rows at the top and the bottom edge, as before; the three dialogs' white pane to the top and bottom |
+| `fw1610` against `bw1610`, the walk into a stage and out | 1920 x 1200 | the loading screen and both wipes' covers from the top edge to the bottom, the star and the stage's emblem round, the blots in the top left and the bottom right corner, the stage panel's picture to both edges, the stage's name at its own shape |
+| `f4k` against `b4k`, S5's walk and a pause | 3840 x 2160 | 32 of 32 frames, the largest difference 26.3 at present 750, the next 12.6; the ring 325 x 375 in both. At present 750 the star's landing in the town is a few presents later in `b4k`, and so it is in a second pair (`f4k2`, `b4k2`: 29.6). Load timing, not the change: the log's line for presents 600 to 720 has 48.0 and 49.9 a second in the two `b` runs and 54.1 and 54.3 in the two `f` runs, and the verify walk of the tree before the change (`vref_xtx`, below) has 54.7 |
+| `v_xtx` against `vref_xtx`, the verify skill's walk | 3840 x 2160 | 21 of 21 frames, the largest difference 1.0 |
+| `v_igpu` against `vref_igpu`, the same on the Ryzen's integrated GPU, 240 s | 3840 x 2160 | 11 of 12 frames (the run ended a shot earlier), the largest difference 3.3 |
+| `f5120` against `b5120`, the same | 5120 x 1440 | 32 of 32 frames, the largest difference 6.9; the ring 207 x 243 in both |
+
+  Each run's log has the same kinds and counts of error lines as its `b` run.
+- **Known weakness**, the strips' as on a wide picture: a shape that reaches the outer slice is smeared along the
+  strip. At 16:10 a strip is 5% of the height: the ends of a wipe's rays go straight up and down through it for a
+  few frames (`fw1610`, present 4080).
+
+Tests: `tests/test_kirby_wide.py`, the UI hook at 16:10 and 4:3 on both kinds of layout camera (the second row and its
+fourth lane by q, the first left), a world camera at 16:10 and a picture under 1% narrower left; before the fix `build 395fc326, UI at ratio 1.6,
+m00 0.0010416667: 0.001042 0.2500 0.001852 0.5000, expected 0.001042 0.2500 0.001667 0.4500` and three more of the
+kind for each build. `tests/test_kirby_wide_keep.py`, the block and the header at 16:10 and 4:3 with the draws of the
+parts above, along y: the background and a bar heightened, the movie lowered with its two strips cleared, a whole
+pane's two strips (scissor to the pixel, the viewport within the height limit, the pane's outer edge on the
+picture's; heightened with a height limit of 2048, strips at the height limit with a low width limit only), the blots moved up and down
+(off the target in a layer), a layer's draws heightened, and the same draws left, with a pane sliding in over the top
+edge and a whole pane moved up. Before the fix `16:10: FAIL: the pause background's viewport wider by the ratio over
+16:9 about its centre (higher by 16:9 over the ratio on a narrower picture; left at 16:9)` and 21 more, the same at
+4:3 (`work/runs/i25/test_keep_before.txt`); 32:9, 21:9 and 16:9 failed only the new check of the header's factor.
+Nineteen changes to lines of the fix, one at a time, each print a `FAIL:` (`test_broken.txt` has the first sixteen).
+A second agent read the diff cold: the arithmetic of a wider picture is as it was; its two points are taken (the 1%
+in the hook, and the test's limit across the axis, which was under the game's own viewport).
+
+Not checked: a real 16:10 or 4:3 screen and a window (the runs are headless); 5:4 and 3:2; dialog boxes, the map and
+the later cutscenes and movies (a pane that ends short of the layout's top or bottom is left short of the picture's);
+a device whose highest viewport is under twice the viewport's height (the heightening instead of strips is tested,
+not seen); the handheld profile; 16:10 with the game's resolution steps on.
+
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
 The reporter has a 144 Hz screen. They find frame generation's ghosting too strong and ask for a real frame rate above 60.

@@ -48,6 +48,16 @@
 //   the ratio over 16:9, so the layer holds the screen at 16:9.
 // - The stage's name on the loading screen is a 1920 x 120 pane of text the GPU drew: a bar's shape. A bar's textures
 //   are the game's own uploads, so a pane that samples a texture the GPU drew is no bar.
+//
+// A picture narrower than 16:9 (16:10, 4:3; docs/design.md, "16:10 and 4:3: the HUD and menus at their own shape",
+// issue #25): the present squeezes the 16:9 window texture to the picture's width, so nx2/kirby_wide.py scales the
+// second row of every layout camera still at 16:9 by the ratio over 16:9 (0.9 at 16:10). The HUD and menus then have
+// their own shape at the picture's whole width, and every layout ends short of the picture's top and bottom (5% of the
+// height each at 16:10). Each rule above has its twin along y (axis): the pause background and a bar are heightened
+// by 16:9 over the ratio (a bar is back at the picture's edge), a movie is lowered by the ratio over 16:9 with the
+// strips above and below it cleared, a layer's draws are heightened, a pane in all four corners gets a strip above
+// and one below, and a pane in one corner is moved up or down. The layout's +y is the higher row of the target: this
+// game's window origin is the lower left, so dynamic_state does not turn its viewports over.
 #pragma once
 
 #include <cmath>
@@ -81,6 +91,27 @@ inline constexpr uint64_t kCopy = 0x272f3b6f806b3a33ull;
 /// Neither has a pane: the constants at kPaneAt are still the last layout's when they draw
 inline constexpr uint64_t kMovie = 0x6f37d965729ec917ull;
 
+/// The axis the rules work along: 0 (x) on a picture wider than 16:9, 1 (y) on a narrower one, -1 on a 16:9 picture
+/// (ratio: host->aspect_ratio, 0 at 16:9)
+inline int axis(float ratio) {
+    constexpr float game = 16.0f / 9.0f;
+    return ratio > game * 1.01f ? 0 : ratio > 0.0f && ratio < game * 0.99f ? 1 : -1;
+}
+
+/// What nx2/kirby_wide.py scales a layout camera by along that axis: 16:9 over the ratio on a wider picture, the ratio
+/// over 16:9 on a narrower one (under 1)
+inline float narrowing(float ratio) {
+    constexpr float game = 16.0f / 9.0f;
+    return ratio > game ? game / ratio : ratio / game;
+}
+
+/// What gives a narrowed draw the whole picture back along that axis: the ratio over 16:9, or 16:9 over the ratio
+/// (over 1)
+inline float widening(float ratio) {
+    constexpr float game = 16.0f / 9.0f;
+    return ratio > game ? ratio / game : game / ratio;
+}
+
 /// What the draw samples: a texture's size and whether the GPU drew it
 struct Sampled {
     uint32_t width = 0, height = 0;
@@ -89,39 +120,41 @@ struct Sampled {
 
 /// The factor the draw's viewport is widened by, about its centre: the picture's ratio over 16:9 for a bar (a pane of
 /// that shape that samples nothing the GPU drew), and for a pane that shows a capture of the picture, in a 16:9 target,
-/// while this game runs on a picture wider than 16:9; 1 for any other draw.
+/// while this game runs on a picture wider than 16:9; 1 for any other draw. On a picture narrower than 16:9 it is the
+/// factor the viewport is heightened by, 16:9 over the ratio (widening).
 /// this_game: the host said this game runs (vk_menu.cpp, !menu_oot_rows()); ratio: the picture's (host->aspect_ratio,
 /// 0 at 16:9); target: the draw's first colour target; pane: the draw's pane (whole_layout), nullptr when it has none
 inline float keep_whole(bool this_game, float ratio, uint32_t target_w, uint32_t target_h, uint64_t program,
                         const Sampled* sampled, int n, const float* pane) {
     constexpr float game = 16.0f / 9.0f;
-    if (!this_game || !(ratio > game * 1.01f) || program == kCopy || program == kMovie || target_h == 0 || !pane) return 1.0f;
+    if (!this_game || axis(ratio) < 0 || program == kCopy || program == kMovie || target_h == 0 || !pane) return 1.0f;
     if (std::fabs((float)target_w / (float)target_h - game) > game * 0.01f) return 1.0f;
     if (bar(pane)) {   // (a pane of that shape with text the GPU drew is a title, not a bar)
         for (int i = 0; i < n; i++)
             if (sampled[i].drawn) return 1.0f;
-        return ratio / game;
+        return widening(ratio);
     }
     if (!whole_layout(pane)) return 1.0f;
     for (int i = 0; i < n; i++) {
         const Sampled& t = sampled[i];
         if (t.drawn && t.height > 0 && std::fabs((float)t.width / (float)t.height - ratio) <= ratio * 0.02f)
-            return ratio / game;
+            return widening(ratio);
     }
     return 1.0f;
 }
 
 /// The factor a full-screen movie's viewport is narrowed by, about its centre: 16:9 over the picture's ratio for the
 /// movie program's draw into a 16:9 target that is not of a sampled texture's size (a frame drawn into a target of its
-/// own size is a hint video's, shown by a pane), while this game runs on a picture wider than 16:9; 1 for any other draw
+/// own size is a hint video's, shown by a pane), while this game runs on a picture wider than 16:9; 1 for any other
+/// draw. On a picture narrower than 16:9 it is the factor the viewport is lowered by, the ratio over 16:9 (narrowing)
 inline float narrow_movie(bool this_game, float ratio, uint32_t target_w, uint32_t target_h, uint64_t program,
                           const Sampled* sampled, int n) {
     constexpr float game = 16.0f / 9.0f;
-    if (!this_game || !(ratio > game * 1.01f) || program != kMovie || target_h == 0) return 1.0f;
+    if (!this_game || axis(ratio) < 0 || program != kMovie || target_h == 0) return 1.0f;
     if (std::fabs((float)target_w / (float)target_h - game) > game * 0.01f) return 1.0f;
     for (int i = 0; i < n; i++)
         if (sampled[i].width == target_w && sampled[i].height == target_h) return 1.0f;
-    return game / ratio;
+    return narrowing(ratio);
 }
 
 /// Where a layout program's vertex constants hold the pane's matrix, three rows of four (scale, shear and shift)
@@ -130,14 +163,18 @@ inline constexpr uint32_t kMatrixAt = 64;
 /// The sides of the layout (1: left, 2: right) a pane (width, height, left, top) moved by its matrix `m` (kMatrixAt)
 /// ends on, within 4 units, while its top or its bottom ends on the layout's: a pane in a corner of the screen, and the
 /// pane over the whole screen in all four. Not a turned pane (a wipe's rays), a pane that reaches past the layout (it
-/// is drawn beside the middle 16:9 already), or one that only crosses an edge on its way (a button that slides in)
-inline int corner_sides(const float pane[4], const float m[12]) {
+/// is drawn beside the middle 16:9 already), or one that only crosses an edge on its way (a button that slides in).
+/// axis 1 (a picture narrower than 16:9): the same turned, 1: bottom, 2: top, while its left or its right ends on the
+/// layout's
+inline int corner_sides(const float pane[4], const float m[12], int axis) {
     if (m[1] != 0.0f || m[4] != 0.0f || !(pane[0] > 0.0f) || !(pane[1] > 0.0f)) return 0;
     const float xa = m[0] * pane[2] + m[3], xb = m[0] * (pane[2] + pane[0]) + m[3];
     const float ya = m[5] * pane[3] + m[7], yb = m[5] * (pane[3] - pane[1]) + m[7];
     const auto on = [](float v, float edge) { return std::fabs(v - edge) <= 4.0f; };
-    if (!on(std::fmax(ya, yb), 540.0f) && !on(std::fmin(ya, yb), -540.0f)) return 0;
-    return (on(std::fmin(xa, xb), -960.0f) ? 1 : 0) | (on(std::fmax(xa, xb), 960.0f) ? 2 : 0);
+    const float lo[2] = {std::fmin(xa, xb), std::fmin(ya, yb)}, hi[2] = {std::fmax(xa, xb), std::fmax(ya, yb)}, edge[2] = {960.0f, 540.0f};
+    const int a = axis, b = 1 - axis;   // (the sides are along a; the pane also ends on an edge across it)
+    if (!on(hi[b], edge[b]) && !on(lo[b], -edge[b])) return 0;
+    return (on(lo[a], -edge[a]) ? 1 : 0) | (on(hi[a], edge[a]) ? 2 : 0);
 }
 
 /// Whether a camera is a layout's as nx2/kirby_wide.py narrowed it: its projection's m11 over m00 is the picture's
@@ -169,28 +206,37 @@ struct Strip {
 /// pixel is the pane's when its centre is inside it), inside the game's scissor (width or height 0: none) and the
 /// target_w x target_h pass. Its viewport is `limit` wide (the device's widest) and puts the pane's outer edge on the
 /// viewport's: the strip then shows the pane's outer slice, stretched. sides: which to make (1: left, 2: right).
+/// axis 1 (a camera lowered to ratio over 16:9, on a picture narrower than 16:9): the same along y, the strips the
+/// rows from the viewport's first and the rows to its last, their viewports `limit` high (the device's highest).
 /// Returns how many are not empty
 inline int side_strips(const float vp[4], float ratio, const int32_t scissor[4], uint32_t target_w, uint32_t target_h, float limit,
-                       int sides, Strip out[2]) {
-    const float q = 16.0f / 9.0f / ratio, half = vp[2] * q * 0.5f, centre = vp[0] + vp[2] * 0.5f;
-    int32_t x0 = 0, y0 = 0, x1 = (int32_t)target_w, y1 = (int32_t)target_h;
-    if (scissor[2] > 0 && scissor[3] > 0) {
-        x0 = scissor[0] > x0 ? scissor[0] : x0, y0 = scissor[1] > y0 ? scissor[1] : y0;
-        x1 = scissor[0] + scissor[2] < x1 ? scissor[0] + scissor[2] : x1, y1 = scissor[1] + scissor[3] < y1 ? scissor[1] + scissor[3] : y1;
-    }
-    const auto col = [x0, x1](float x) { return (int32_t)std::fmin(std::fmax(std::ceil(x - 0.5f), (float)x0), (float)x1); };
-    const int32_t x[2][2] = {{col(vp[0]), col(centre - half)}, {col(centre + half), col(vp[0] + vp[2])}};
-    const float left[2] = {vp[0] - limit * (1.0f - q) * 0.5f, vp[0] + vp[2] - limit * (1.0f + q) * 0.5f};
+                       int sides, int axis, Strip out[2]) {
+    const int a = axis, b = 1 - axis;
+    const float q = narrowing(ratio), half = vp[2 + a] * q * 0.5f, centre = vp[a] + vp[2 + a] * 0.5f;
+    int32_t lo[2] = {0, 0}, hi[2] = {(int32_t)target_w, (int32_t)target_h};
+    if (scissor[2] > 0 && scissor[3] > 0)
+        for (int i = 0; i < 2; i++) {
+            lo[i] = scissor[i] > lo[i] ? scissor[i] : lo[i];
+            hi[i] = scissor[i] + scissor[2 + i] < hi[i] ? scissor[i] + scissor[2 + i] : hi[i];
+        }
+    const auto px = [&lo, &hi, a](float x) { return (int32_t)std::fmin(std::fmax(std::ceil(x - 0.5f), (float)lo[a]), (float)hi[a]); };
+    const int32_t x[2][2] = {{px(vp[a]), px(centre - half)}, {px(centre + half), px(vp[a] + vp[2 + a])}};
+    const float from[2] = {vp[a] - limit * (1.0f - q) * 0.5f, vp[a] + vp[2 + a] - limit * (1.0f + q) * 0.5f};
     int n = 0;
-    for (int i = 0; i < 2; i++)
-        if ((sides & (1 << i)) && x[i][1] > x[i][0] && y1 > y0) out[n++] = {{left[i], vp[1], limit, vp[3]}, {x[i][0], y0, x[i][1] - x[i][0], y1 - y0}};
+    for (int i = 0; i < 2; i++) {
+        if (!(sides & (1 << i)) || x[i][1] <= x[i][0] || hi[b] <= lo[b]) continue;
+        Strip& s = out[n++];
+        s.viewport[a] = from[i], s.viewport[2 + a] = limit, s.viewport[b] = vp[b], s.viewport[2 + b] = vp[2 + b];
+        s.scissor[a] = x[i][0], s.scissor[2 + a] = x[i][1] - x[i][0], s.scissor[b] = lo[b], s.scissor[2 + b] = hi[b] - lo[b];
+    }
     return n;
 }
 
-/// What draw() does for a draw: its viewport scaled by k about its centre, and side strips drawn first
+/// What draw() does for a draw: its viewport scaled by k about its centre along an axis, and side strips drawn first
 struct Plan {
+    int axis = 0;   // (0: the viewport's x and width, 1: its y and height, on a picture narrower than 16:9)
     float k = 1.0f;
-    float dx = 0.0f;   // (the viewport's x moves by this many pixels, after k)
+    float shift = 0.0f;   // (the viewport moves by this many pixels along the axis, after k)
     int strips = 0;
     Strip side[2];
 };
@@ -203,13 +249,16 @@ struct Plan {
 /// its viewport moves by to put the pane in the picture's corner (off the target in a layer). vp and scissor
 /// are the game's; plain: the draw can be drawn again as it is (no mesh, indirect or query draw, no copy of its target
 /// open). sampled: the textures it samples (gpu_written). read(from, out, bytes) reads its layout constants and returns
-/// false when it cannot (asked last: it reads guest memory)
+/// false when it cannot (asked last: it reads guest memory). On a picture narrower than 16:9 the same along y (axis 1):
+/// heightened, lowered, a strip above and one below, moved up or down. limit: the device's widest and highest viewport
+/// (maxViewportDimensions), the one along the axis taken
 template <class Targets, class Program, class List, class Read>
 Plan plan(bool this_game, float ratio, const Targets& at, const Program& p, uint32_t window, const List& sampled, const float vp[4],
-          const int32_t scissor[4], bool plain, float limit, Read read) {
-    constexpr float game = 16.0f / 9.0f;
+          const int32_t scissor[4], bool plain, const uint32_t limit[2], Read read) {
     Plan out;
-    if (in_strip || !this_game || !(ratio > game * 1.01f) || at.n < 1 || !at.color[0]) return out;
+    const int a = axis(ratio);
+    if (in_strip || !this_game || a < 0 || at.n < 1 || !at.color[0]) return out;
+    out.axis = a;
     const uint32_t tw = at.color[0]->width, th = at.color[0]->height;
     Sampled s[8];
     int n = 0;
@@ -224,16 +273,17 @@ Plan plan(bool this_game, float ratio, const Targets& at, const Program& p, uint
     if (out.k = keep_whole(this_game, ratio, tw, th, p.key, s, n, pane); out.k != 1.0f) return out;
     float head[kMatrixAt / 4 + 12];   // (the camera, m00 the first and m11 the sixth, then the pane's matrix)
     if (!reads_pane(p) || !read(0, head, sizeof head) || !narrowed(head[0], head[5], ratio)) return out;
-    const int sides = corner_sides(pane, head + kMatrixAt / 4);
+    const int sides = corner_sides(pane, head + kMatrixAt / 4, a);
     const float whole[4] = {vp[0], vp[1], vp[2], vp[3]}, target[4] = {0.0f, 0.0f, (float)at.width, (float)at.height};
     const float* const v = vp[2] == 0.0f && vp[3] == 0.0f ? target : whole;
     const bool layer = window && window != (tw << 16 | (th & 0xffff));
-    // (one corner: moved whole, by half of what the narrowing leaves of the viewport; in a layer, off the target)
-    if (sides == 1 || sides == 2) return out.dx = (sides == 1 ? -v[2] : v[2]) * (layer ? 2.0f : (1.0f - game / ratio) * 0.5f), out;
-    if (layer) return out.k = ratio / game, out;
+    // (one corner: moved whole, by half of what the narrowing leaves of the viewport; in a layer, off the target. Side 1
+    // is the left, or the bottom: towards 0 along the axis, the layout's +y being the higher row)
+    if (sides == 1 || sides == 2) return out.shift = (sides == 1 ? -v[2 + a] : v[2 + a]) * (layer ? 2.0f : (1.0f - narrowing(ratio)) * 0.5f), out;
+    if (layer) return out.k = widening(ratio), out;
     if (sides != 3 || !plain) return out;
-    if (limit < v[2] * 2.0f) return out.k = ratio / game, out;
-    out.strips = side_strips(v, ratio, scissor, at.width, at.height, limit, sides, out.side);
+    if ((float)limit[a] < v[2 + a] * 2.0f) return out.k = widening(ratio), out;
+    out.strips = side_strips(v, ratio, scissor, at.width, at.height, (float)limit[a], sides, a, out.side);
     return out;
 }
 
@@ -246,17 +296,19 @@ inline void widen(float& x, float& width, float k) {
 
 /// The two strips a viewport narrowed by k (under 1) about its centre leaves of the one it was, in whole pixels of a
 /// target_w x target_h target: out[i] = x, y, width, height. They reach a pixel into the narrowed viewport's edge
-/// columns, which the draw that follows covers. Returns how many are not empty
-inline int sides(const float narrowed[4], float k, uint32_t target_w, uint32_t target_h, int32_t out[2][4]) {
-    const float half = narrowed[2] / k * 0.5f, centre = narrowed[0] + narrowed[2] * 0.5f;
-    const auto col = [target_w](float x) { return (int32_t)std::fmin(std::fmax(x, 0.0f), (float)target_w); };
-    const int32_t y0 = (int32_t)std::fmin(std::fmax(std::floor(narrowed[1]), 0.0f), (float)target_h);
-    const int32_t y1 = (int32_t)std::fmin(std::fmax(std::ceil(narrowed[1] + narrowed[3]), 0.0f), (float)target_h);
-    const int32_t x[2][2] = {{col(std::floor(centre - half)), col(std::ceil(narrowed[0]))},
-                             {col(std::floor(narrowed[0] + narrowed[2])), col(std::ceil(centre + half))}};
+/// columns, which the draw that follows covers. axis 1: a viewport lowered by k, the strips above and below it.
+/// Returns how many are not empty
+inline int sides(const float narrowed[4], float k, uint32_t target_w, uint32_t target_h, int axis, int32_t out[2][4]) {
+    const int a = axis, b = 1 - axis;
+    const float size[2] = {(float)target_w, (float)target_h};
+    const float half = narrowed[2 + a] / k * 0.5f, centre = narrowed[a] + narrowed[2 + a] * 0.5f;
+    const auto px = [&size](float x, int i) { return (int32_t)std::fmin(std::fmax(x, 0.0f), size[i]); };
+    const int32_t b0 = px(std::floor(narrowed[b]), b), b1 = px(std::ceil(narrowed[b] + narrowed[2 + b]), b);
+    const int32_t x[2][2] = {{px(std::floor(centre - half), a), px(std::ceil(narrowed[a]), a)},
+                             {px(std::floor(narrowed[a] + narrowed[2 + a]), a), px(std::ceil(centre + half), a)}};
     int n = 0;
     for (const auto& s : x)
-        if (s[1] > s[0] && y1 > y0) out[n][0] = s[0], out[n][1] = y0, out[n][2] = s[1] - s[0], out[n][3] = y1 - y0, n++;
+        if (s[1] > s[0] && b1 > b0) out[n][a] = s[0], out[n][b] = b0, out[n][2 + a] = s[1] - s[0], out[n][2 + b] = b1 - b0, n++;
     return n;
 }
 

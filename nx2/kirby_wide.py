@@ -1,4 +1,5 @@
-"""The cameras at the screen's ratio on a screen wider than 16:9 (Kirby and the Forgotten Land, Switch 2 Edition).
+"""The cameras at the screen's ratio on a screen wider or narrower than 16:9 (Kirby and the Forgotten Land, Switch 2
+Edition).
 
 The game's cameras are 16:9 because a script says so: its interpreter (main+0x7cff00) calls one of two projection builders
 (main+0x74dc50, main+0x74dd4c), closures whose captures hold the camera, the vertical angle, the aspect (+0x10), near and
@@ -28,8 +29,10 @@ as rows (v0 the first, v1 the second), then main+0x5e28e0 copies them. The layou
 1080 (2 / 1920, 2 / 1080) and a perspective one of the same 16:9 shape (2.537, 4.511, the 2.5D panes); the world's
 cameras are at the picture's ratio by then. C after the ld4 scales the first row by (16 / 9) / ratio when the second's
 m11 over the first's m00 is still 16 / 9 (host/kirby_wide.c kirby_wide_ui): the UI keeps its shape, in the middle of
-the picture. The pause menu's background is a capture of the whole picture drawn by such a camera; the renderer keeps
-that draw the picture's width (gpu/vk/kirby_wide.h).
+the picture. On a picture narrower than 16:9 (16:10, 4:3) the stretch is a squeeze, and the same C scales the second
+row by ratio / (16 / 9) instead: the UI keeps its shape at the picture's whole width, short of its top and bottom
+(issue #25). The pause menu's background is a capture of the whole picture drawn by such a camera; the renderer keeps
+that draw the picture's width, or its height (gpu/vk/kirby_wide.h).
 
 Gated on main's build id and the five words; another build leaves it out, and says so.
 """
@@ -44,7 +47,7 @@ SITES = (
 )
 # (offset in main, the game's word): a camera's projection as rows in v0 to v3, before the view takes it
 UI_SITE = (0x85a808, 0x4c400900)   # ld4 {v0.4s-v3.4s}, [x8]   (f_8087a75c: the camera's +0x250)
-UI_HOOK = ("{ extern void kirby_wide_ui(uint64_t *r0, const uint64_t *r1); kirby_wide_ui(c->vreg[0], c->vreg[1]); }"
+UI_HOOK = ("{ extern void kirby_wide_ui(uint64_t *r0, uint64_t *r1); kirby_wide_ui(c->vreg[0], c->vreg[1]); }"
            "   /* (nx2/kirby_wide.py: the HUD and menus at their 16:9 shape) */")
 
 

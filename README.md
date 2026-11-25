@@ -43,7 +43,7 @@ sessions are lost.
 | Sound, music, movies and keyboard | ✅ Work |
 | Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in v0.5.0; see below to bring back the last session's |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
-| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD, menus and movies at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play). 16:10 and 4:3 fill the screen too (up to v0.5.1 the right edge of the HUD and menus was cut there) |
+| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD, menus and movies at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play). 16:10 and 4:3 fill the screen too, the HUD and menus at their own shape, a little in from the top and bottom (up to v0.5.1 their right edge was cut there; up to v0.6.0 they were drawn too high, by 11% at 16:10) |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
@@ -130,8 +130,11 @@ videos keep their 16:9 shape in the middle of the screen, and so do the full-scr
 pause menu's blurred background and a cutscene's black bars cover the whole width, and so do the star wipe between
 screens and the loading screen, their star and title in the middle (beside the stage panel's picture its edge is drawn
 out to the screen's). A 16:10 or 4:3 screen shows less at
-the sides. There the HUD and menus fill the width, drawn a little narrower (up to v0.5.1 their right tenth was cut at
-16:10: the coin counter, the edge of the pause menu).
+the sides. There the HUD and menus keep their 16:9 shape at the screen's whole width, so they sit a little in from
+the top and bottom (5% of the height at 16:10, 12.5% at 4:3), and the full-screen movies have black above and below;
+the pause menu's blurred background, a cutscene's black bars, the star wipe and the loading screen reach the top and
+bottom. Up to v0.6.0 the HUD and menus were drawn too high there (by 11% at 16:10: an oval coin), and up to v0.5.1
+their right tenth was cut at 16:10 (the coin counter, the edge of the pause menu).
 **Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with
 bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as
 3440 x 1440 or 5120 x 1440. The environment variable `HOS_ASPECT` sets a ratio, such as `HOS_ASPECT=2.3889`.

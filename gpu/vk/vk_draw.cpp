@@ -9474,7 +9474,8 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
         // (inhale) this game's pause background, a capture of the whole picture, keeps the picture's width (kirby_wide.h),
         // and so do its cutscene bars; a full-screen movie keeps its 16:9 shape; a wipe's layer is drawn at 16:9, and a
         // pane over the whole screen (a wipe's cover, a loading screen's fill) is drawn again for each side strip, a pane in
-        // one corner (a loading screen's blot) moved to the picture's
+        // one corner (a loading screen's blot) moved to the picture's. On a picture narrower than 16:9 the same along y
+        // (wide.axis 1: issue #25)
         static const float wide_ratio = host && host->aspect_ratio ? host->aspect_ratio() : 0.0f;
         float* const vp = s.viewport[0];
         const float vp_game[4] = {vp[0], vp[1], vp[2], vp[3]};
@@ -9485,20 +9486,20 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
         };
         const kirby_wide::Plan wide = kirby_wide::plan(!menu_oot_rows(), wide_ratio, at, p, kirby_upscale::texture.load(std::memory_order_relaxed), gfx_sampled(),
                                                        vp_game, sc_game, !d.mesh && !d.indirect && !d.occ_pool && at_pass == &at,
-                                                       (float)dev.props.limits.maxViewportDimensions[0], consts);
+                                                       dev.props.limits.maxViewportDimensions, consts);
         // (each strip a draw of its own, as the task batches above: the same state but the viewport and the scissor)
         for (int i = 0; i < wide.strips; i++) {
             std::memcpy(vp, wide.side[i].viewport, sizeof vp_game), std::memcpy(s.scissor, wide.side[i].scissor, sizeof sc_game);
             kirby_wide::in_strip = true, draw(cmd, s, d), kirby_wide::in_strip = false;
             std::memcpy(vp, vp_game, sizeof vp_game), std::memcpy(s.scissor, sc_game, sizeof sc_game);
         }
-        if (const float k = wide.k; k != 1.0f || wide.dx != 0.0f) {
+        if (const float k = wide.k; k != 1.0f || wide.shift != 0.0f) {
             if (vp[2] == 0.0f && vp[3] == 0.0f) vp[2] = (float)at.width, vp[3] = (float)at.height;
-            kirby_wide::widen(vp[0], vp[2], k), vp[0] += wide.dx;
+            kirby_wide::widen(vp[wide.axis], vp[2 + wide.axis], k), vp[wide.axis] += wide.shift;
             // (black beside a narrowed movie, where Copy drew the scene target. In the pass, before the draw: nothing in
             // it samples this target, so the clear is ordered with Copy's write and the movie's as it must be)
             int32_t side[2][4];
-            for (int i = 0, n = k < 1.0f ? kirby_wide::sides(vp, k, at.width, at.height, side) : 0; i < n; i++) {
+            for (int i = 0, n = k < 1.0f ? kirby_wide::sides(vp, k, at.width, at.height, wide.axis, side) : 0; i < n; i++) {
                 VkClearAttachment black{};
                 black.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, black.clearValue.color.float32[3] = 1.0f;
                 const VkClearRect rect{{{side[i][0], side[i][1]}, {(uint32_t)side[i][2], (uint32_t)side[i][3]}}, 0, 1};
