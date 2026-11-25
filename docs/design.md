@@ -2239,10 +2239,79 @@ and 16:10 left; five sites), `tests/test_kirby_wide_keep.py` (the block cut from
 widened at 32:9 and 21:9 and the game's viewport given back; a HUD pane, Copy, the other game, 16:9, a texture the GPU
 did not draw, a target not 16:9 left; the pane read only after the cheaper checks).
 
-Not checked: the opening movie (no idle run reached it), dialog boxes, door transitions, the map and the other screens
-that draw a capture (if one draws it as a pane over the whole layout it is widened as the pause's; a smaller pane of a
-capture stays narrowed and samples it at its 16:9 place), 16:10 and 4:3 (the UI is left at the window texture's width
-there, so the stretch narrows it a little), and the HUD at the screen's edges (upstream's `hos_wide_ui.c`), not done.
+Not checked: dialog boxes, door transitions, the map and the other screens that draw a capture (if one draws it as a
+pane over the whole layout it is widened as the pause's; a smaller pane of a capture stays narrowed and samples it at
+its 16:9 place), 4:3, and the HUD at the screen's edges (upstream's `hos_wide_ui.c`), not done. The opening movie and
+16:10 are in the next part.
+
+**2026-11-25, the cutscene bars and the movies.** The tester's next report at 5120 x 1440 (eight screenshots): menus
+and HUD good; a cutscene's black bars at the top and bottom cover only the middle 16:9, the scene showing beside them
+(the dialog with Elfilin, the world map's "Natural Plains" intro); the full-screen movies are still stretched over the
+whole width, with a round "Skip" over them.
+
+- **Measured** on a first start (no save: three dialogs, `mov/EventMovie/Opening.webm`, then the beach cutscene with
+  its bars from about present 6000 to 7700) at 5120 x 1440, with a temporary log in `draw` of every draw's program,
+  target, viewport, layout constants and sampled textures, each 240th frame (`work/runs/w20b/vk_draw_probe2.patch`,
+  `m1.txt`; not kept), and S5's walk with a pause and with a hint video (`p1.txt`, `p2.txt`).
+  - **The movie.** A frame of the movie is two draws into the 3840 x 2160 window texture, viewport 2560 x 1440: Copy
+    (`272f3b6f806b3a33`) of the scene target, then `6f37d965729ec917`, four vertices, no blend, sampling the frame's two
+    planes (1920 x 1080 and 960 x 540: the player reads the decoder's picture as NV12, `ReadDecoderOutputImageNv12`).
+    Both planes are marked uploaded and written by the GPU, so the draw's list of sampled textures has them. It takes
+    no layout camera (its c3 is still the last layout's, a 220 x 70 pane's), which is why the UI hook never reached
+    it. A hint video (480 x 270) is drawn by the same program into a 480 x 270 target, the frame's own size, and
+    layout draws then show that target (the first, `f82ccc8f84f79c52`, into a 484 x 274 one). All six files of
+    `mov/EventMovie` are 1920 x 1080 (ffprobe).
+  - **The bars.** Each bar is two layout draws into the window texture with one pane, 1920 x 64 at -960, 32 (64 of
+    the layout's 1080 lines: 84 of 1440 in the shots), under the narrowed orthographic camera (m00 2 / 3840):
+    `4acf6657314c31df` sampling a 1920 x 64 picture and `5cfce03bc8b25357` sampling an 8 x 8 fill, both uploaded.
+    `5cfce03bc8b25357` is the program of most plain panes (the HUD's and the title's too), and an 8 x 8 fill is common,
+    so neither the program nor the texture tells a bar; the pane does. Of the panes at least 1900 wide seen in these
+    runs, the others are whole-layout ones (2398 x 1478 of the pause menu, 1920 x 1080 and 1922 x 1082 fills) and one
+    of 1950 x 975 at -975, 0 (`e7dfee2b5914c1d9`, a 488 x 488 picture over the pause menu's lower half).
+- **The two rules** (`gpu/vk/kirby_wide.h`, the same block of `draw` in `vk_draw.cpp`), while this game runs on a
+  picture wider than 16:9 and the draw's first colour target is 16:9:
+  - A pane at least 1920 wide, centred, and at most 135 high (an eighth of the layout: the bars are 64, a 2.35:1
+    picture's would be 131) has its viewport widened by the ratio over 16:9 about its centre, as the pause background's.
+    The pane is now read for every draw into a 16:9 target but Copy's and the movie program's, which have no pane of
+    their own.
+  - The movie program's draw into a target that is not of a sampled texture's size has its viewport narrowed by 16:9
+    over the ratio about its centre. Copy has drawn the scene target there first, and it is grey (188) while a movie
+    plays: a first run with the viewport alone showed grey sides. So the two strips the narrowed viewport leaves of
+    the game's are cleared to black, in the pass, before the draw (`vkCmdClearAttachments`; nothing in that pass samples
+    the window texture, so the clear is ordered with Copy's write and the movie's).
+- **Runs** (`work/runs/w20b/`, RX 7900 XTX, the shots looked at):
+
+| run | picture | seen |
+|---|---|---|
+| `m1` (before) | 5120 x 1440, first start | the movie over the whole width; the bars over the middle 16:9 only |
+| `b5120` | 5120 x 1440, first start | the movie in the middle 16:9, black beside it, "Skip" in its corner; the bars across the picture |
+| `b3440` | 3440 x 1440, first start | the same |
+| `q1` against `p1` (before) | 5120 x 1440, S5's walk and a pause | title, HUD, pause menu and its blur as before: 32 of 32 frames, each under 4 but one at 14.6 (present 750: the camera's move into the town a little further on, no UI in it) |
+| `q2` against `p2` (before) | 5120 x 1440, the first stage | the "Jump" hint video in its box, as before: 31 of 31 frames, the largest difference 1.1 |
+| `r169` against `ref169` (before) | 3840 x 2160 | 21 of 21 frames, the largest difference 1.5 |
+| `r1610` against `ref1610` (before) | 1920 x 1200 (issue #25) | 21 of 21 frames, the largest difference 2.3 |
+
+- **16:10 (issue #25, "black bars" at 1920 x 1200).** The run's log has `boot: widescreen: picture 1920x1200 ... camera
+  ratio 1.6000` and its shots fill the picture with a round world and no bars, as since v0.5.0. But the UI is not as
+  the README said: everything the layouts draw ends at about 90% of the width (column 1727 of 1920). The coin counter
+  at the top right is cut to a sliver, and the pause menu's blur ends there with the sharp scene beside it. The same
+  in the tree before this change and with the Resolution row at its default (`ref1610`, `d1610`). 90% is 16:10 over
+  16:9, so a size taken from the scene's shape is the first suspect (a scissor or a viewport of 2304 of the window
+  texture's 2560). Not looked at further and not fixed here.
+
+Tests: `tests/test_kirby_wide_keep.py` runs the block once a picture (32:9, 21:9, 16:9, 16:10, 4:3): a bar by either
+program widened, the movie narrowed with its two strips cleared (and with a viewport of 0 x 0), and left: a HUD strip,
+the 975-high pane, a bar not centred, a bar's constants under Copy or in a target not 16:9, a hint video with a bar's
+constants still bound, the other game. Before the fix it printed `32:9: FAIL: a cutscene bar: its viewport wider by the
+ratio over 16:9 about its centre` (twice) and `32:9: FAIL: a full-screen movie: its viewport narrower by 16:9 over the
+ratio about its centre`, the same at 21:9, and with the viewport alone `32:9: FAIL: the movie's sides: the two strips
+beside it cleared to black`.
+
+Not checked: the other five files of `mov/EventMovie` and the bars of later cutscenes (the dialog with Elfilin and the
+world map's intro of the report: the rule takes any bar of that pane, but no run reached them); a strip of a menu as
+wide as the layout and at most 135 high, which the rule would widen with its picture stretched (none seen); the full
+pane behind the first start's dialogs, which still ends at the middle 16:9 with black beside it; the cost of reading a
+pane for each layout draw (the walks stayed at 60 presents a second); a real 21:9 or 32:9 screen.
 
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
