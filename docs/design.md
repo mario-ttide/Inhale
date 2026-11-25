@@ -2297,7 +2297,7 @@ whole width, with a round "Skip" over them.
   at the top right is cut to a sliver, and the pause menu's blur ends there with the sharp scene beside it. The same
   in the tree before this change and with the Resolution row at its default (`ref1610`, `d1610`). 90% is 16:10 over
   16:9, so a size taken from the scene's shape is the first suspect (a scissor or a viewport of 2304 of the window
-  texture's 2560). Not looked at further and not fixed here.
+  texture's 2560). Not looked at further and not fixed here: the next part.
 
 Tests: `tests/test_kirby_wide_keep.py` runs the block once a picture (32:9, 21:9, 16:9, 16:10, 4:3): a bar by either
 program widened, the movie narrowed with its two strips cleared (and with a viewport of 0 x 0), and left: a HUD strip,
@@ -2312,6 +2312,35 @@ world map's intro of the report: the rule takes any bar of that pane, but no run
 wide as the layout and at most 135 high, which the rule would widen with its picture stretched (none seen); the full
 pane behind the first start's dialogs, which still ends at the middle 16:9 with black beside it; the cost of reading a
 pane for each layout draw (the walks stayed at 60 presents a second); a real 21:9 or 32:9 screen.
+
+**2026-11-25, 16:10: the HUD cut at the scene's width.** The defect the 1920 x 1200 run showed (issue #25): the right
+tenth of everything the layouts draw was missing.
+
+- **Measured** with the same temporary log in `draw`, the pass's depth target added
+  (`work/runs/w20b/vk_draw_probe3.patch`, `e1.txt`, `e2.txt`; not kept). The game draws the HUD and menus into the
+  window texture (3840 x 2160, of which the window shows 2560 x 1440) with a viewport and a scissor of 2560 x 1440, and
+  with a depth target of its own bound (depth write on, no test) that has the scene's size: 2304 x 1440 at 16:10. A
+  pass covers the area all its targets share (`targets` in `vk_draw.cpp` takes the smallest width and height, as the
+  console does), so the pass was 2304 x 1440 and the columns 2304 to 2560 were not drawn: 90%, column 1728 of 1920 on
+  the screen. Copy draws the scene into the window with no depth target and was whole. On a picture wider than 16:9
+  the scene is wider than 2560 and nothing is cut; in the handheld profile the file is left as read.
+- **The fix** (`host/kirby_res.c` `kirby_scn_shape`): a scene narrower than 2560 becomes 2560 wide, its height from
+  the picture's shape: 2560 x 1600 at 16:10 (from 2304 x 1440, 23% more pixels), 2560 x 1920 at 4:3, 2560 x 2048 at
+  5:4, all under the cap. A picture at 16:9 or wider gets the size it had. The other way, a pass without the depth
+  target or one made wider, would be in upstream's renderer or need the place where the game makes that target.
+- **Runs** (`work/runs/w20b/`, RX 7900 XTX, S5's walk and a pause): `s1610` at 1920 x 1200 has `kirby: 3D frame
+  2560x1600`; the coin counter is whole and the pause menu's blur reaches the right edge, where `r1610` (before) cut
+  both (`sm/s1610_vs_r1610.png`, `sm/s1610_corner.png`); against `r1610` 21 of 21 frames, the largest difference 4.7;
+  60 presents a second, GPU time 0.9 ms a frame (0.8 before). `s43` at 1920 x 1440 (4:3, not tried before): scene
+  2560 x 1920, HUD and pause menu whole, a quarter narrower than at 16:9 as expected, 60 presents a second.
+
+Test: `tests/test_kirby_res.py`, the shape's cases: 16:10 at three outputs, 4:3, 5:4 and 3:2 at least 2560 wide and
+1440 high, the wider pictures as before. Before the fix it printed `shape 2304x1440: 2304x1440, expected 2560x1600`;
+each of three lines of the fix broken prints a line of that kind.
+
+Not checked: 16:10 or 4:3 with the game's steps on (`HOS_DYNAMIC_RES=1`: whether the depth target follows a lower
+level; all six levels are at least 2560 wide only while the steps are off), a first start's movie and bars at 16:10, a
+real 16:10 screen, a window (the runs are headless), a slow card with the 23% more pixels.
 
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 

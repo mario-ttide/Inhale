@@ -43,7 +43,7 @@ sessions are lost.
 | Sound, music, movies and keyboard | ✅ Work |
 | Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in v0.5.0; see below to bring back the last session's |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
-| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD, menus and movies at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play). At 16:10 the picture fills the screen, but the right tenth of the HUD and menus is cut |
+| Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD, menus and movies at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play). 16:10 and 4:3 fill the screen too (up to v0.5.1 the right edge of the HUD and menus was cut there) |
 | Frame generation | ⚠️ **Auto** works. A fixed **2x** and up can freeze the game for a few seconds now and then (seen on Linux with an AMD card) |
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
@@ -128,15 +128,16 @@ Motion controls follow the controller used last. Xbox controllers read through X
 on a 16:9 screen, and the enemies there move as smoothly as in the middle. The HUD, the menus and the hint
 videos keep their 16:9 shape in the middle of the screen, and so do the full-screen movies, with black beside them; the
 pause menu's blurred background and a cutscene's black bars cover the whole width. A 16:10 or 4:3 screen shows less at
-the sides. There the HUD and menus are drawn a little narrower, and at 16:10 their right tenth is cut for now (the coin
-counter, the edge of the pause menu); 4:3 is not tried.
+the sides. There the HUD and menus fill the width, drawn a little narrower (up to v0.5.1 their right tenth was cut at
+16:10: the coin counter, the edge of the pause menu).
 **Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with
 bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as
 3440 x 1440 or 5120 x 1440. The environment variable `HOS_ASPECT` sets a ratio, such as `HOS_ASPECT=2.3889`.
 
 **Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other 16:9 screen. On a screen of another shape it takes that shape, at least 1440 lines high
-and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440 one. The
+and 2560 wide, and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440
+one, 2560 x 1600 on a 1920 x 1200 one. The
 game's dynamic resolution is off, so the size stays fixed; turn **Graphics, Dynamic resolution** on (docked profile,
 after a restart) to let the game lower it under load. The handheld profile draws the scene at the game's handheld size, 1920 x 1080, and does
 not lower it under your PC's load. On a slow graphics card, such as a laptop's integrated one, choose a smaller
