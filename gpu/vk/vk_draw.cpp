@@ -83,6 +83,7 @@
 #include "movie_upscale_policy.h"
 #include "skip_code.h"
 #include "kirby_post.h"   // (inhale) the Depth of field row
+#include "kirby_route.h"   // (inhale) the FPS counter footer's record for this game
 #include "kirby_upscale.h"   // (inhale) the stand-in for this game's upscale network
 #include "kirby_wide.h"   // (inhale) this game's pause background and bars at the picture's width, its movies at 16:9
 #include "driver_faults.h"
@@ -9464,6 +9465,12 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     }
     {
         FINE_SCOPE(FT_DYN);
+        // (inhale) this game's scene goes into the window texture by a Copy draw: the footer's record (kirby_route.h)
+        if (upscale_route::Sample r; upscale_route::wanted() && at.n && at.color[0] && !gfx_sampled().empty() && gfx_sampled()[0] &&
+                                     kirby_route::copy_drawn(!menu_oot_rows(), p.key, at.color[0]->width, at.color[0]->height,
+                                                             at.color[0]->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32, gfx_sampled()[0]->width,
+                                                             gfx_sampled()[0]->height, gfx_sampled()[0]->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32, &r))
+            upscale_route::publish(r);
         // (inhale) this game's pause background, a capture of the whole picture, keeps the picture's width (kirby_wide.h),
         // and so do its cutscene bars; a full-screen movie keeps its 16:9 shape; a wipe's layer is drawn at 16:9, and a
         // pane over the whole screen (a wipe's cover, a loading screen's fill) is drawn again for each side strip, a pane in
@@ -10025,6 +10032,9 @@ bool upscale_stub(VkCommandBuffer cmd, const NvnState& s, uint64_t key) {
         vkCmdBlitImage(cmd, src->image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &bl, VK_FILTER_LINEAR);
         full_barrier(cmd);
         texture_written(dst);
+        if (upscale_route::Sample r; upscale_route::wanted() && kirby_route::upscaled(true, upscale_route::Route::Blit, src->width, src->height,
+                                                                                     dst->width, dst->height, &r))
+            upscale_route::publish(r);   // (the footer's record: kirby_route.h)
         return true;
     }
     if (dst->format == VK_FORMAT_R8G8B8A8_UNORM && movie_upscale(cmd, in_h, out_h, dst)) {
@@ -10406,6 +10416,10 @@ static void route_network_drawn(const NvnState& s, const Program& p) {
         texture_view_of(h, VK_IMAGE_VIEW_TYPE_2D, ViewUse::Sample, VK_FORMAT_UNDEFINED, &in);
     if (const uint32_t h = handle_of(s, st, od, 0))
         texture_view_of(h, VK_IMAGE_VIEW_TYPE_2D, ViewUse::Storage, image_format(od.format), &out, &level);
+    // (inhale) this game's network reads an RGBA8 picture, which the rule below refuses: its record is kirby_route.h's
+    if (upscale_route::Sample r; in && out && kirby_route::upscaled(!menu_oot_rows(), upscale_route::Route::Network, in->width, in->height,
+                                                                     out->width, out->height, &r))
+        return upscale_route::publish(r);
     if (in && out && (known || in->format == out->format)) route_publish(upscale_route::Route::Network, known, in, out, level);
 }
 

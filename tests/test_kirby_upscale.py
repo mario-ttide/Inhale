@@ -2,6 +2,7 @@
 upscale_stub): when the window shows a part of its texture (handheld: 1920 x 1080 of 3840 x 2160), the scene is blitted
 into that part alone, where upstream's stand-ins fill the whole image and the screen showed a quarter of the scene. The
 block is cut from vk_draw.cpp and compiled with stand-ins for Vulkan: what it blits and where, and that it leaves the
+footer's record (kirby_route.h: the scene's size into that part, a linear blit) only while the footer asks, and leaves the
 dispatch to the stand-ins below for the other game, for unlike formats, for an image that is not the window texture's
 size, and while the window shows its whole texture or no present was seen. And vk_replay.cpp's do_present notes each
 present.
@@ -23,8 +24,15 @@ from srccut import block, between
 FIXTURE = r'''
 #include <cassert>
 #include <cstdio>
+#include "kirby_route.h"
 #include "kirby_upscale.h"
 using namespace mkwvk;
+// (the footer's record, upscale_route.cpp's: what the block publishes, and whether the footer asks)
+static bool footer_asks;
+static int records;
+static upscale_route::Sample record;
+bool mkwvk::upscale_route::wanted() { return footer_asks; }
+void mkwvk::upscale_route::publish(const Sample& s) { record = s, records++; }
 
 // (stand-ins for what the block calls)
 struct Texture { int format; uint32_t width, height; int image; };
@@ -34,7 +42,7 @@ struct VkImageSubresourceLayers { int aspectMask, mipLevel, baseArrayLayer, laye
 struct VkImageBlit { VkImageSubresourceLayers srcSubresource; VkOffset3D srcOffsets[2]; VkImageSubresourceLayers dstSubresource; VkOffset3D dstOffsets[2]; };
 enum { VK_IMAGE_ASPECT_COLOR_BIT = 1, VK_IMAGE_LAYOUT_GENERAL = 1, VK_FILTER_LINEAR = 1 };
 static bool other_game;
-bool menu_oot_rows() { return other_game; }   // (not static: the block may stop asking, and the check must then fail in a case)
+bool mkwvk::menu_oot_rows() { return other_game; }   // (kirby_wide.h declares it; the block may stop asking, and the check must then fail in a case)
 static VkImageBlit got;
 static int blits, barriers, written, from, into, filter;
 static void vkCmdBlitImage(VkCommandBuffer, int src, int, int dst, int, int n, const VkImageBlit* b, int f) {
@@ -62,11 +70,18 @@ int main() {
     assert(got.dstOffsets[0].x == 0 && got.dstOffsets[0].y == 0 && got.dstOffsets[1].x == 1920 && got.dstOffsets[1].y == 1080);
     assert(got.srcOffsets[1].z == 1 && got.dstOffsets[1].z == 1 && got.srcSubresource.layerCount == 1 &&
            got.dstSubresource.layerCount == 1 && got.srcSubresource.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT);
+    // the footer's record: none while nobody asks; then the scene's size into the part, as a linear blit
+    assert(!records);
+    footer_asks = true;
+    assert(stand_in(0, &scene, &window) && blits == 2 && records == 1);
+    assert(record.route == upscale_route::Route::Blit && record.in_w == 1120 && record.in_h == 630 && record.out_w == 1920 &&
+           record.out_h == 1080);
+    footer_asks = false, blits = 1;
     // the other game; unlike formats; an image that is not the window texture's size: the stand-ins below
     other_game = true;
     assert(!stand_in(0, &scene, &window));
     other_game = false;
-    assert(!stand_in(0, &scene, &srgb) && !stand_in(0, &scene, &other) && blits == 1);
+    assert(!stand_in(0, &scene, &srgb) && !stand_in(0, &scene, &other) && blits == 1 && records == 1);
     // a part with a corner of its own: the blit goes there
     const int corner[4] = {100, 50, 1280, 720};
     kirby_upscale::note_present(3840, 2160, corner);

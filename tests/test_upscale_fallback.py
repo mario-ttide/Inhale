@@ -194,7 +194,16 @@ void vkCmdBlitImage(VkCommandBuffer, VkImage a, VkImageLayout al, VkImage b, VkI
     blits++;
 }
 // (the FPS counter footer's record, upscale_route.h: nobody reads it here, so nothing is published for it)
-namespace upscale_route { enum class Route { Network, StandIn, Blit, Engine, Stretch }; }
+namespace upscale_route {
+enum class Route { Network, StandIn, Blit, Engine, Stretch };
+struct Sample {};
+bool wanted() { return false; }
+void publish(const Sample &) {}
+}
+// (inhale) this fork's record in its block of upscale_stub (tests/test_kirby_route.py), never reached here
+namespace kirby_route {
+bool upscaled(bool, upscale_route::Route, uint32_t, uint32_t, uint32_t, uint32_t, upscale_route::Sample *) { return false; }
+}
 namespace upscaler_rows { enum { GAME = 0 }; }
 static void route_publish(upscale_route::Route, bool, const Texture *, const Texture *, uint32_t, int = 0, bool = false) {}
 '''

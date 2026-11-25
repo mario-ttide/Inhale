@@ -2661,3 +2661,69 @@ texture there, so the same block applies; no run made the game step there); Wind
 made on this PC does not start on the T480s as built: the renderer links this distribution's static libstdc++, which
 is compiled for x86-64-v4 (`Illegal instruction` in `_Prime_rehash_policy::_M_need_rehash`); the runs there used
 `RX_MARCH=x86-64-v3` and the C++ library linked dynamically.
+
+### 2026-11-25: the footer's render lines ("Resolution: not in gameplay" at all times)
+
+The FPS counter's Dev footer shows the last record published to `gpu/vk/upscale_route.h`, and "Resolution: not in
+gameplay" when none came in the last half second. Every path that publishes one is upstream's and knows the other game
+only: its two network keys (`gameplay_network`), or an upscale that reads a picture of the scene's format and of the
+size `note_scene` saw. The engines never run here (the Upscaler row is hidden). So the footer never had a record in
+this game.
+
+**What draws this game's picture.** The scene (B10G11R11, at the dynamic resolution's size) goes into the window
+texture (RGBA8) by one draw of Copy (`272f3b6f806b3a33`). Under 720 lines the game's network draws it there instead
+(program `454c9063aaa52d56`: one sampled texture, one image, cooperative matrices; it reads an RGBA8 picture, so
+upstream's rule, the same format in and out, refuses it), or the blit that stands in for it (`kirby_upscale.h`).
+
+**The change.** `gpu/vk/kirby_route.h` fills the record for the three, and `vk_draw.cpp` publishes it in three places,
+each behind `upscale_route::wanted()`: in `draw()` before the wide picture's plan (Copy into a target of the last
+present's texture size that is not of the scene's format, sampling first a picture of the scene's format: route
+`Stretch`), in this game's block of `upscale_stub` (route `Blit`), and in `route_network_drawn` before upstream's rule
+(route `Network`, only into an image of the window texture's size). The picture's size is the part of the window texture
+that is shown (`kirby_upscale::shown_part`), else the whole texture. `upscale_route.h` and its words are as upstream
+has them.
+
+| case | line 1 | line 2 |
+|---|---|---|
+| scene at the picture's size | `Resolution 2560x1440 (100%)` | `Upscaling: off, no AA` |
+| stepped down, Copy | `Resolution 1600x900 to 1920x1080 (83%)` | `Upscaling: off (stretched)` |
+| the game's network | `Resolution 960x540 to 1920x1080 (50%)` | `Upscaling: Built-in` |
+| the network left out | `Resolution 960x540 to 1920x1080 (50%)` | `Upscaling: linear blit, no AA` |
+
+**A scene larger than what the window shows.** Docked, the game's window crop is `0,0 2560x1440` at every output
+(`nvn: window crop` in the log), of a 3840 x 2160 window texture. At an output above 2560 x 1440, and on an ultrawide
+picture, the scene is drawn at the output's size (`host/kirby_res.c`): Copy's viewport is still 2560 x 1440, so the
+draw makes the scene smaller (3840 x 2160, or 5120 x 1440, into 2560 x 1440), and the present stretches that part to
+the output. Such a scene is recorded at its own size, as not scaled (`Resolution 3840x2160 (100%)`): against the part
+it would read 150%, and 200% at 5120 x 1440, where only the width differs. The output's size is not known in the
+renderer's record, so a scene stepped down from such a size (`HOS_DYNAMIC_RES=1` at 3840 x 2160: 3360 x 1890) reads
+100% too. Not looked into here: what the 2560 x 1440 part in between costs the picture at a 3840 x 2160 output.
+
+**Runs** (RX 7900 XTX, headless, 75 s: title, town, world map, the first stage; `work/runs/fr/`). A headless run draws
+no overlay and never asks for a record, so the footer itself was not seen: each run had `wanted()` forced on and logged
+every record with the footer's own words (`footer_lines`), both taken out again.
+
+| run | records |
+|---|---|
+| docked, 2560 x 1440 (`fdock`) | 4035 `Resolution 2560x1440 (100%)`, `Upscaling: off, no AA` |
+| docked, 3840 x 2160 (`f4k`) | 4023 `Resolution 3840x2160 (100%)`, `Upscaling: off, no AA` |
+| docked, 5120 x 1440 (`fuw`) | 4034 `Resolution 5120x1440 (100%)`, `Upscaling: off, no AA` |
+| handheld (`hand`) | 4045 `Resolution 1920x1080 (100%)`, `Upscaling: off, no AA` |
+| handheld, 900 lines (`h900`) | 4034 `Resolution 1600x900 to 1920x1080 (83%)`, `Upscaling: off (stretched)` |
+| handheld, 540 lines (`f540`) | 4030 `Resolution 960x540 to 1920x1080 (50%)`, `Upscaling: Built-in` |
+| the same, `RX_VK_FORCE_UPSCALE_STUB=2` (`fstub`) | 4030 the same sizes, `Upscaling: linear blit, no AA` |
+
+Three or four records at the start of a run are of another Copy (a 3840 x 2160 or 1920 x 1080 picture, before the
+title). One kind of record a frame otherwise, so the footer does not change between two.
+
+Test: `tests/test_kirby_route.py` compiles the header with the footer's words for each case and each refusal, and
+checks that the three calls stand. `tests/test_kirby_upscale.py` runs the blit's call in its cut (no record while
+nobody asks; the scene's size into the part). `tests/test_upscale_fallback.py` got stand-ins for the call.
+`tests/run_all.py --strict` with both header folders: 799 passed, 0 failed, 11 skipped (the tree before: 797 passed, 1
+failed, `test_sampler_admission`'s concurrent case, which passed in the run after). `scripts/rename_full.py` 0 places,
+`scripts/check_third_party.py` 17 parts.
+
+Not checked: the footer on a screen (a windowed run with the counter on Dev); a docked scene stepped down by the game
+(`HOS_DYNAMIC_RES=1` at 2560 x 1440 never stepped on this GPU: the header's case only); a card that leaves the network
+out by itself; Windows; NVIDIA. Known and left: the title screen, the town and the world map show a resolution too
+(4030 records in 4500 presents), since the scene is drawn there, and so will a movie's Copy.
