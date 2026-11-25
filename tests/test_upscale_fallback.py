@@ -137,6 +137,10 @@ static bool temporal_rejected_network(VkCommandBuffer, uint64_t, Texture *, cons
 }
 thread_local Texture *stub_picture = nullptr;   // (vk_draw.cpp: the output upscale_stub notes for frame generation's HUD mark)
 void full_barrier(VkCommandBuffer) {}
+// (inhale) this fork's block in upscale_stub, for its own game (tests/test_kirby_upscale.py checks it): here the other game
+// runs, so the block leaves every case to the stand-ins this check is about
+bool menu_oot_rows() { return true; }
+namespace kirby_upscale { bool shown_part(uint32_t, uint32_t, int *) { return false; } }
 bool dump_on() { return false; }
 void logf(const char *format, ...) {
     if (std::strstr(format, "gameplay RGB9E5 upscale uses the typed fallback"))

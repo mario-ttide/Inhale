@@ -83,6 +83,7 @@
 #include "movie_upscale_policy.h"
 #include "skip_code.h"
 #include "kirby_post.h"   // (inhale) the Depth of field row
+#include "kirby_upscale.h"   // (inhale) the stand-in for this game's upscale network
 #include "kirby_wide.h"   // (inhale) this game's pause background at the picture's width
 #include "driver_faults.h"
 #include "driver_cache_env.h"   // (the drivers' own caches as the environment chooses them, Linux)
@@ -9989,6 +9990,21 @@ bool upscale_stub(VkCommandBuffer cmd, const NvnState& s, uint64_t key) {
         return false;
     end_pass(cmd);
     full_barrier(cmd);
+    // (inhale) this game's network writes only the part of the window texture that is shown (handheld: 1920 x 1080 of
+    // 3840 x 2160). The stand-ins below fill the whole image: the screen showed a quarter of the scene, and dark. The scene
+    // blitted into that part alone: kirby_upscale.h
+    if (int part[4]; !menu_oot_rows() && src->format == dst->format && kirby_upscale::shown_part(dst->width, dst->height, part)) {
+        VkImageBlit bl{};
+        bl.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        bl.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        bl.srcOffsets[1] = {(int32_t)src->width, (int32_t)src->height, 1};
+        bl.dstOffsets[0] = {part[0], part[1], 0};
+        bl.dstOffsets[1] = {part[0] + part[2], part[1] + part[3], 1};
+        vkCmdBlitImage(cmd, src->image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &bl, VK_FILTER_LINEAR);
+        full_barrier(cmd);
+        texture_written(dst);
+        return true;
+    }
     if (dst->format == VK_FORMAT_R8G8B8A8_UNORM && movie_upscale(cmd, in_h, out_h, dst)) {
         full_barrier(cmd);
         texture_written(dst);

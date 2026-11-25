@@ -2342,3 +2342,118 @@ stages (the walk reaches only the title's `.bfstm` and the menu's music; the Opu
 Helpers in `work/runs/music23/`: `run.sh <name> <seconds>` (a build of the tree, headless, audio muted and dumped to
 `<name>.wav`, the trace on), `sessions.py <log>` (each voice's acquisitions, appends and states), `rms.py <wav>`,
 `dis.py <image dir> <hex address> <count>` (capstone on `work/sa/image`), `temp_trace.diff` (the trace).
+
+### 2026-11-24: handheld on a slow GPU (an Iris Xe laptop at 20-28 fps)
+
+The report: an i7-1365U (Iris Xe, Mesa 26.2.6, Fedora 44), nightly-85-bbb6f74, 20-28 fps in the first stages with the
+handheld profile already on. Its log shows no fault. A frame there is 52.7 ms: game 13.1, renderer 33.6, GPU fence
+5.3, the GPU 47% busy and 17-24 ms a frame. That laptop could not be reached, so the runs are on two others: this PC's
+Radeon 610M (Ryzen 9 7900X, RADV; `work/runs/igpu/`) and a ThinkPad T480s (i5-8250U, UHD 620, Mesa 26.3.1, the same
+Intel driver as the report's; `work/runs/dohko/`). S5's walk, headless, `HOS_HANDHELD=1`, the pass trace and the frame
+trace on, shots every 300 presents.
+
+**The handheld scene does not step down under GPU load.** On the 610M the GPU took 26.9 ms a frame and the scene
+stayed at 1920 x 1080 from present 1200 to the end (`b0`, `b1`), with the real clock too (`RX_VK_TS_SCALE=1`, `ts1`)
+and with the clock ten times fast (`ts10`). On the UHD 620 it took 77.9 ms a frame, and the scene stayed at 1920 x 1080
+(`warm`). The game did step to 1600 x 900 for a few hundred presents at the start of a first run after a build (`b0`
+at presents 600-900, `warm` at 300-900, `g1080` at 600-900), not in the runs after (`b1`): what moves it is not found.
+
+**The handheld set.** Right after the six docked levels (0x97ce8) the file holds five sizes as (width, height):
+1920 x 1080, 1600 x 900, 1120 x 630, 960 x 540, 640 x 360. With all five given one size the scene holds it for the
+whole walk.
+
+**A stepped-down frame was drawn cropped and dark: the stand-in for the game's upscale network.** Whenever the scene is
+below the first size by a step of the game's own (`b0`: 1600 x 900) or is under about 1280 x 720 (`l2`, `l3`, `e1`:
+1120 x 630 and below, whatever the entries written; `e2` at 1280 x 720 not), the game takes another route from colour
+grading to the screen: three passes (`94393ed0fcd780c9`, `c17b5543a23da415`, `c5defd56e2c80848`) at the scene's size,
+then a network (compute `2e0288cb2abe176e` or `cf6c798537325d54`) that upscales their result into the window texture,
+in place of its Copy (`272f3b6f806b3a33`). The window texture is 3840 x 2160 and the game shows a part of it
+(`nvn: window crop 0,0 1920x1080` in handheld, `2560x1440` docked at a 4K output); the network writes that part.
+On a card where the network is left out (`not translated: a network left out on this card`: the 610M, the UHD 620)
+upstream's `upscale_stub` stands in for it, and its stand-in (`movie_upscale`, "movie upscaling uses the linear compute
+path") fills the whole 3840 x 2160. So the screen showed the lower left quarter of the scene, twice as large, under a
+HUD in its right place; and dark, since that shader reads the picture decoded and stores it as read. Seen in the
+released build with the shipped table and nothing set: `b0` at presents 900 and 1200, `warm` at 900
+(`sheet_b0.png`). Found by a frame dump (`RX_VK_DUMP=1800`, `d630`: step 107, the last pass, holds the whole scene), the
+copy log (`RX_VK_LOG_COPY=1`: no copy to the window) and the log's `rejected compute` line.
+
+The fix (`gpu/vk/kirby_upscale.h`; one marked block in `upscale_stub`, `vk_draw.cpp`, and one marked line in
+`do_present`, `vk_replay.cpp`): each present notes its texture's size and crop; where the stand-in's output image has
+the window texture's size, the window shows a part of it and both images have one format, the scene is blitted into
+that part alone, for this game only. Both images hold the encoded bytes, which a blit copies as they are. Any other
+case goes on to upstream's stand-ins as before (a window that shows its whole texture, the other game).
+After it: `f630` (1120 x 630) and `f360` (640 x 360) against `b1`, 0 frames over 30; on the UHD 620 the game's own
+step (`g1080` at 600 and 900) is right (`sheet_fix.png`, `sheet_final.png`). The stand-in is also cheaper than the
+one it replaces: 1120 x 630 went from 55.8 to 59.9 fps on the 610M.
+
+**`HOS_SCENE_HEIGHT=<lines>`** (`host/kirby_res.c`, `kirby_scn_handheld_patch`, called from `kirby_read_done`). In the
+handheld profile it gives all five sizes of the handheld set the 16:9 size of that many lines, held to 360 to 1080
+(the set's own smallest and largest), each side even, when the bytes are the ones known. Unset, the file is left as
+read, as before. `HOS_DYNAMIC_RES=1` leaves it as read too. Docked is not changed. No default changes: which height
+the handheld profile should take by itself is not decided.
+
+| run (S5's walk, handheld) | scene | presents a second | GPU time a frame |
+|---|---|---|---|
+| Radeon 610M, default (`b1`, `g1080`) | 1920 x 1080 | 33.0, 33.2 | 27.2 ms |
+| Radeon 610M, `HOS_SCENE_HEIGHT=900` (`h900`) | 1600 x 900 | 43.0 | 20.2 ms |
+| Radeon 610M, `HOS_SCENE_HEIGHT=720` (`h720`) | 1280 x 720 | 55.8 | 14.7 ms |
+| Radeon 610M, `HOS_SCENE_HEIGHT=540` (`g540`) | 960 x 540 | 59.9 | 11.0 ms |
+| Radeon 610M, `HOS_SCENE_HEIGHT=360` (`f360`) | 640 x 360 | 60.0 | 7.4 ms |
+| UHD 620, default (`warm`, `g1080`) | 1920 x 1080 | 10.0, 11.1 | 77.9 ms |
+| UHD 620, `HOS_SCENE_HEIGHT=900` (`h900`) | 1600 x 900 | 12.4 | 61.5 ms |
+| UHD 620, `HOS_SCENE_HEIGHT=720` (`h720`) | 1280 x 720 | 15.1 | 42.5 ms |
+| UHD 620, `HOS_SCENE_HEIGHT=540` (`g540`) | 960 x 540 | 22.8 | 31.6 ms |
+| UHD 620, `HOS_SCENE_HEIGHT=360` (`g360`) | 640 x 360 | 28.9 | 22.0 ms |
+
+The shots of each run against `b1` on the 610M (`scripts/kirby_shot_compare.py`): every frame there, none over 30, no
+flash (`RX_VK_FLASH=1`), and looked at on sheets (`sheet_h.png`, `sheet_fix.png`). On the UHD 620 against its `h720`:
+none over 30. Under 720 lines the picture is the game's three passes and a plain stretch, without its network.
+
+**The render thread without mirrors: the picture holds, the frame rate does not rise.** Auto is off on an integrated
+GPU ("the buffer pools have no mirrors"). `RX_VK_ASYNC=1` (the render thread) and `threaded_rendering=1` in the options
+file (both threads), each against the serial replay with the flash detector on:
+
+| run | presents a second | shots against serial |
+|---|---|---|
+| Radeon 610M, 1920 x 1080: serial (`b1`), render thread (`a1`), both threads (`t1`) | 33.0, 31.8, 31.2 | 0 over 30, 0 flashes |
+| UHD 620, 640 x 360: serial (`q0`), render thread (`q1`), both threads (`q2`) | 25.1, 23.4, 27.8 | 0 over 30, 0 flashes |
+
+The 610M is held by its GPU (the replay is 3.3 ms of a 30 ms frame), so it can show the picture only. The UHD 620 runs
+were made at 640 x 360 before the stand-in's fix, so all three drew the cropped picture: they compare the threads with
+each other. Both threads gained 11% there in one run each, the render thread alone nothing, on a CPU with 3 cores left
+for the game (Auto is off under 4, whatever the mirrors). That is not a measurement to change Auto on, so
+`threaded_choice` is as it was. What would settle it is a run on the report's laptop (10 cores, held by its CPU) with
+`threaded_rendering=1`.
+
+**Where the CPU time goes on the Intel laptop** (UHD 620, 1280 x 720, `perf record -e cycles:u` over 50 s of play,
+`runs/perf.data` there, and `/proc`'s thread times). A frame is 65.1 ms: game 9.7, renderer 31.7, waiting for the GPU
+23.5. Of the user-mode cycles the thread that submits and replays has 29% (the renderer 14%, Mesa's Intel driver 10.5%,
+no function over 2.2%), the game's six worker threads 53% (the lifted code: `s_807eff00`, `f_80846ba0`, `f_80847c80`)
+and its main thread 9%. On the replaying thread kernel time is 4% of the wall clock against 42% in user mode. The CPU
+ran at 1.8 GHz on average (`powersave`, 15 W shared with the GPU). Intel's replay settings are not the cost: with them
+forced on the 610M (`RX_VK_UB_SNAPSHOT=1 RX_VK_SPLIT_UBFLUSH=0 RX_VK_SPLIT_BEFORE_DRAW=1`, `x0`) the replay took 3.3 ms
+against 3.5, and with them off on the UHD 620 (`p0`) 24.2 ms against 23.0. So there is no one thing to lift on the CPU
+side: the game's own code and a replay spread thin, on a CPU held to a low clock.
+
+Tests. `tests/test_kirby_res.py` got the handheld set in its fixture and the cases of the height (the five sizes, the
+floor at 360 and the ceiling at 1080, even sides, the docked table untouched, an unknown set left, docked not taking
+the variable, the game's steps over it): before the change it does not link (`undefined reference to
+kirby_scn_handheld_patch`), and each of six lines of the change undone fails an assertion of its own.
+`tests/test_kirby_upscale.py` cuts the stand-in's block out of `upscale_stub` and compiles it with stand-ins for
+Vulkan: the blit's source and destination, the corner, and every case left to upstream's stand-ins; each of seven
+lines undone fails it (the whole image as before: `got.dstOffsets[1].x == 1920` fails).
+`tests/test_upscale_fallback.py`, upstream's check that compiles `upscale_stub` whole, got stand-ins for the block's two
+calls, with the other game running. `tests/run_all.py --strict` with both header folders: 798 passed, 0 failed, 11
+skipped. `scripts/rename_full.py` 0 places, `scripts/check_third_party.py` 17 parts.
+
+The docked walk on both GPUs of this PC, against a walk of the tree before made the same hour (`r_xtx`, `r_igpu`
+against `v_xtx`, `v_igpu`): 21 of 21 and 9 of 9 frames, none over 30. The older references (`work/runs/fence2/`) no
+longer fit: the save they started from has changed, and the walk now enters another stage.
+
+Not checked: the report's laptop (the height, the stand-in, the threads); a card that runs the network (NVIDIA: the
+route's picture there was never looked at); docked with `HOS_DYNAMIC_RES=1` (the window shows 2560 x 1440 of its
+texture there, so the same block applies; no run made the game step there); Windows; the Profile row set in the menu
+(the runs set `HOS_HANDHELD`); a 16:10 or wider picture in handheld (the scene stays 16:9 there, as before). A build
+made on this PC does not start on the T480s as built: the renderer links this distribution's static libstdc++, which
+is compiled for x86-64-v4 (`Illegal instruction` in `_Prime_rehash_policy::_M_need_rehash`); the runs there used
+`RX_MARCH=x86-64-v3` and the C++ library linked dynamically.

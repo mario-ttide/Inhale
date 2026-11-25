@@ -70,6 +70,7 @@
 #include "submit_retry.h"    // (longshot, #1879: a submit refused for want of memory made again)
 #include "shader_recompiler/backend/spirv/mma_layout.h"   // (graphics_table_loads, mesh_fallback_pages: replay_start)
 #include "flush_owed_inhale.h"   // (inhale: a blocking wait's fence sends the batch its submit lands in, held after its send)
+#include "kirby_upscale.h"   // (inhale: the part of the window texture a present shows, for the upscale stand-in)
 #include "vk_work.h"   // (after the others: counts the commands that do GPU work, for full_barrier)
 
 namespace mkwvk {
@@ -5440,6 +5441,7 @@ void do_present(const nvn_tex* t, const int crop[4], uint64_t native_generation 
         static const int64_t at = getenv("RX_VK_PASS_TRACE_AT") ? atoll(getenv("RX_VK_PASS_TRACE_AT")) : 0;
         if (at && ++seen % at == 0) pass_traces_log(texture_frame_no() - 1, texture_frame_no());
     }
+    if (t) kirby_upscale::note_present(t->d.width, t->d.height, crop);   // (inhale) for the upscale stand-in: kirby_upscale.h
     static const char* shots = getenv("RX_VK_SHOTS");
     static const int shot_every = getenv("RX_VK_SHOT_EVERY") ? std::max(1, atoi(getenv("RX_VK_SHOT_EVERY"))) : 300;
     VkImage src = VK_NULL_HANDLE;

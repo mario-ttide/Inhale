@@ -19,7 +19,13 @@
    HOS_DYNAMIC_RES=1 gives the game's steps back. The handheld profile (the menu's Profile row, HOS_HANDHELD) keeps the
    file as the game ships it, steps and all: it draws from another set of sizes (1920 x 1080 down), but was seen at a
    docked level's size too, so the fixed size is not given to it. The table's bytes are checked first: another version
-   of the file is left as it is, and says so. */
+   of the file is left as it is, and says so.
+
+   The handheld set follows the docked levels in the file: five sizes, 1920 x 1080, 1600 x 900, 1120 x 630, 960 x 540,
+   640 x 360. The game does not step down it under this PC's GPU load (docs/design.md, "handheld on a slow GPU"), so
+   HOS_SCENE_HEIGHT=<lines> holds the handheld scene at one size, 16:9, 360 to 1080 lines (the set's smallest and
+   largest): all five sizes become it. Under 720 lines the game upscales the scene with its network, which a card
+   without it gets as a plain stretch (gpu/vk/kirby_upscale.h). */
 #ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/inhale_env.h"
 #endif
@@ -40,23 +46,38 @@ int hos_handheld(void);                 /* nn_applet.c */
 static const uint32_t kirby_scn_levels[KIRBY_SCN_LEVELS * 3] = {
     0, 2560, 1440, 1, 2240, 1260, 2, 1862, 1048, 3, 1536, 864, 4, 1280, 720, 5, 854, 480,
 };
+/* the handheld set, right after them: (width, height) of each of its five sizes */
+#define KIRBY_SCN_HANDHELD (KIRBY_SCN_TABLE + (int64_t)sizeof kirby_scn_levels)
+static const uint32_t kirby_scn_handheld[] = {
+    1920, 1080, 1600, 900, 1120, 630, 960, 540, 640, 360,
+};
+
+/* Where the `size` bytes at file offset `table` lie in a read of [off, off + n) of guest: -1 when the file is not
+   ScnCommon.bin, the read does not hold all of them, or they are not `known` (said, as `what`) */
+static int64_t kirby_scn_at(const char *guest, int64_t off, const uint8_t *buf, uint64_t n, int64_t table,
+                            const void *known, size_t size, const char *what) {
+    static const char name[] = "/basil/ScnCommon.bin";
+    const size_t len = guest ? strlen(guest) : 0, tail = sizeof name - 1;
+    if (len < tail || strcmp(guest + len - tail, name)) return -1;
+    const int64_t at = table - off;
+    if (at < 0 || (uint64_t)at + size > n) return -1;   /* (not this read, or not all of it in it) */
+    if (memcmp(buf + at, known, size)) {
+        hos_log("kirby: %s: the %s at %#x are not the ones known: left as they are", guest, what, (unsigned)table);
+        return -1;
+    }
+    return at;
+}
 
 /* The read of [off, off + n) of a file the game opened as guest, now in buf: the table rewritten in it when it is
    there whole. Returns 1 when the sizes were changed. shaped: out_w x out_h is the picture's own shape (kirby_scn_shape),
    taken whatever its ratio. */
 int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t out_w, uint32_t out_h, int fixed,
                     int shaped) {
-    static const char name[] = "/basil/ScnCommon.bin";
-    const size_t len = guest ? strlen(guest) : 0, tail = sizeof name - 1;
-    if (len < tail || strcmp(guest + len - tail, name)) return 0;
-    const int64_t at = KIRBY_SCN_TABLE - off;
-    if (at < 0 || (uint64_t)at + sizeof kirby_scn_levels > n) return 0;   /* (not this read, or not all of it in it) */
+    const int64_t at = kirby_scn_at(guest, off, buf, n, KIRBY_SCN_TABLE, kirby_scn_levels, sizeof kirby_scn_levels,
+                                    "frame sizes");
+    if (at < 0) return 0;
     uint32_t v[KIRBY_SCN_LEVELS * 3];
     memcpy(v, buf + at, sizeof v);
-    if (memcmp(v, kirby_scn_levels, sizeof v)) {
-        hos_log("kirby: %s: the frame sizes at %#x are not the ones known: left as they are", guest, KIRBY_SCN_TABLE);
-        return 0;
-    }
     const int bigger = shaped ? out_w && out_h : (uint64_t)out_w * 9 == (uint64_t)out_h * 16 && out_w > 2560 && out_w <= 3840;
     if (!bigger && !fixed) return 0;
     for (int k = 0; k < KIRBY_SCN_LEVELS; k++) {
@@ -68,6 +89,20 @@ int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, ui
     memcpy(buf + at, v, sizeof v);
     hos_log("kirby: 3D frame %ux%u down to %ux%u%s", v[1], v[2], v[KIRBY_SCN_LEVELS * 3 - 2], v[KIRBY_SCN_LEVELS * 3 - 1],
             fixed ? " (fixed: HOS_DYNAMIC_RES=1 for the game's steps)" : "");
+    return 1;
+}
+
+/* The same read, for the handheld set: each of its five sizes becomes the 16:9 size of `height` lines, held to 360 to
+   1080 lines, each side even. 0: left as read. Returns 1 when the sizes were changed. */
+int kirby_scn_handheld_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t height) {
+    if (!height) return 0;
+    const int64_t at = kirby_scn_at(guest, off, buf, n, KIRBY_SCN_HANDHELD, kirby_scn_handheld,
+                                    sizeof kirby_scn_handheld, "handheld frame sizes");
+    if (at < 0) return 0;
+    height = (height < 360 ? 360 : height > 1080 ? 1080 : height) & ~1u;
+    const uint32_t size[2] = {(height * 16 / 9) & ~1u, height};
+    for (size_t k = 0; k < sizeof kirby_scn_handheld; k += sizeof size) memcpy(buf + at + k, size, sizeof size);
+    hos_log("kirby: 3D frame %ux%u (handheld, fixed: HOS_SCENE_HEIGHT)", size[0], size[1]);
     return 1;
 }
 
@@ -88,6 +123,10 @@ void kirby_read_done(const char *guest, int64_t off, uint8_t *buf, uint64_t n) {
     const int shaped = hos_wide_ratio > 0.0f && wide && !hos_handheld();   /* (handheld: the file as read, as at 16:9) */
     if (shaped) kirby_scn_shape((uint32_t)wide, (uint32_t)(wide >> 32), &w, &h);
     kirby_scn_patch(guest, off, buf, n, w, h, !hos_handheld() && !env_on("HOS_DYNAMIC_RES"), shaped);
+    /* (handheld: the scene held at HOS_SCENE_HEIGHT lines, unless the game's steps are asked for) */
+    const int lines = env_int("HOS_SCENE_HEIGHT", 0);
+    if (hos_handheld() && lines > 0 && !env_on("HOS_DYNAMIC_RES"))
+        kirby_scn_handheld_patch(guest, off, buf, n, (uint32_t)lines);
     void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n);   /* (the shadow map's size: kirby_shadow.c) */
     kirby_shadow_read(guest, off, buf, n);
 }

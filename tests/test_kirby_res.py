@@ -2,7 +2,9 @@
 16:9 output between 2560 x 1440 and 3840 x 2160 as the file is read, and left alone for another output, another file, a
 read that does not hold the whole table, or a table that is not the one known. The fixed size, every level the first
 one's, and kirby_read_done's choice of it: fixed unless HOS_DYNAMIC_RES is set to a number that is not 0 (the game's
-steps are off by default), and never in the handheld profile, which keeps the file as read. A picture of its own shape
+steps are off by default), and never in the handheld profile, which keeps the file as read. There HOS_SCENE_HEIGHT=<lines>
+holds the scene at one 16:9 size, 360 to 1080 lines: the five sizes of the handheld set, which follows the docked table in
+the file, all become it, and the docked table stays as read. A picture of its own shape
 (this game's cameras at the screen's ratio, host/kirby_wide.c) gives the scene that shape, within the pixels of 3840 x 2160. The sizes in the fixture
 are the game's level sizes (numbers, no game data). And nn_fs.c's read calls it before the bytes are marked written.
 
@@ -37,18 +39,33 @@ int hos_handheld(void) { return handheld; }
 void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n) { (void)guest, (void)off, (void)buf, (void)n; }
 int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t out_w, uint32_t out_h, int fixed,
                     int shaped);
+int kirby_scn_handheld_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t height);
 void kirby_scn_shape(uint32_t pw, uint32_t ph, uint32_t *w, uint32_t *h);
 volatile uint64_t hos_wide_out;
 volatile float hos_wide_ratio;
 void kirby_read_done(const char *guest, int64_t off, uint8_t *buf, uint64_t n);
 
 static const uint32_t game[18] = {0, 2560, 1440, 1, 2240, 1260, 2, 1862, 1048, 3, 1536, 864, 4, 1280, 720, 5, 854, 480};
+/* the handheld set, right after the docked levels: five (width, height) */
+static const uint32_t hand[10] = {1920, 1080, 1600, 900, 1120, 630, 960, 540, 640, 360};
+#define HAND (0x97ca0 + sizeof game)
 static uint8_t file[0x98000];
 static const char *path = "aoc1:/basil/ScnCommon.bin";
 
-static void fresh(void) { memset(file, 0xab, sizeof file); memcpy(file + 0x97ca0, game, sizeof game); }
+static void fresh(void) {
+    memset(file, 0xab, sizeof file);
+    memcpy(file + 0x97ca0, game, sizeof game);
+    memcpy(file + HAND, hand, sizeof hand);
+}
 static uint32_t at(int k) { uint32_t v; memcpy(&v, file + 0x97ca0 + 4 * k, 4); return v; }
-static int same(void) { return !memcmp(file + 0x97ca0, game, sizeof game) && file[0x97ca0 - 1] == 0xab && file[0x97ca0 + sizeof game] == 0xab; }
+static uint32_t hat(int k) { uint32_t v; memcpy(&v, file + HAND + 4 * k, 4); return v; }
+static int hand_same(void) { return !memcmp(file + HAND, hand, sizeof hand) && file[HAND + sizeof hand] == 0xab; }
+static int docked_same(void) { return !memcmp(file + 0x97ca0, game, sizeof game) && file[0x97ca0 - 1] == 0xab; }
+static int same(void) { return docked_same() && hand_same(); }
+static int hand_all(uint32_t w, uint32_t h) {
+    for (int k = 0; k < 5; k++) if (hat(2 * k) != w || hat(2 * k + 1) != h) return 0;
+    return file[HAND + sizeof hand] == 0xab;
+}
 
 int main(void) {
     /* 3840 x 2160: x1.5, each side even; the index words and the bytes around the table stay */
@@ -56,7 +73,7 @@ int main(void) {
     assert(kirby_scn_patch(path, 0, file, sizeof file, 3840, 2160, 0, 0) == 1);
     const uint32_t want[18] = {0, 3840, 2160, 1, 3360, 1890, 2, 2792, 1572, 3, 2304, 1296, 4, 1920, 1080, 5, 1280, 720};
     for (int k = 0; k < 18; k++) assert(at(k) == want[k]);
-    assert(file[0x97ca0 - 1] == 0xab && file[0x97ca0 + sizeof game] == 0xab);
+    assert(file[0x97ca0 - 1] == 0xab && hand_same());
     /* a read from further on that holds the table: the same */
     fresh();
     assert(kirby_scn_patch(path, 0x90000, file + 0x90000, sizeof file - 0x90000, 3840, 2160, 0, 0) == 1 && at(1) == 3840);
@@ -85,6 +102,26 @@ int main(void) {
     fresh();
     assert(kirby_scn_patch(path, 0, file, sizeof file, 1920, 1080, 1, 0) == 1);
     for (int k = 0; k < 6; k++) assert(at(3 * k + 1) == 2560 && at(3 * k + 2) == 1440);
+    assert(hand_same());
+    /* the handheld set held at one height: its five sizes that 16:9 size, each side even, the docked table and the
+       bytes after as read; under 360 lines 360 (the set's smallest), over 1080 lines 1080 */
+    const uint32_t held[][3] = {{720, 1280, 720}, {900, 1600, 900}, {1080, 1920, 1080}, {800, 1422, 800}, {801, 1422, 800},
+                                {360, 640, 360}, {630, 1120, 630}, {1, 640, 360}, {2160, 1920, 1080}};
+    for (unsigned i = 0; i < sizeof held / sizeof *held; i++) {
+        fresh();
+        assert(kirby_scn_handheld_patch(path, 0, file, sizeof file, held[i][0]) == 1);
+        assert(hand_all(held[i][1], held[i][2]) && docked_same());
+    }
+    fresh();
+    assert(kirby_scn_handheld_patch(path, 0x90000, file + 0x90000, sizeof file - 0x90000, 720) == 1 && hand_all(1280, 720));
+    /* no height (0), another file, a read without all of the set, or a set that is not the one known: left */
+    fresh();
+    assert(kirby_scn_handheld_patch(path, 0, file, sizeof file, 0) == 0 && same());
+    assert(kirby_scn_handheld_patch("aoc1:/basil/App.bin", 0, file, sizeof file, 720) == 0 && same());
+    assert(kirby_scn_handheld_patch(path, 0, file, HAND + 36, 720) == 0 && same());
+    assert(kirby_scn_handheld_patch(path, HAND + 4, file + HAND + 4, 0x100, 720) == 0 && same());
+    file[HAND + 4 * 3] ^= 1;
+    assert(kirby_scn_handheld_patch(path, 0, file, sizeof file, 720) == 0 && hat(3) == (900 ^ 1) && hat(0) == 1920);
     /* the read's own choice (the output here is 3840 x 2160): fixed with HOS_DYNAMIC_RES unset or 0, the game's steps
        with 1 */
     unsetenv("HOS_DYNAMIC_RES");
@@ -99,6 +136,14 @@ int main(void) {
     fresh();
     kirby_read_done(path, 0, file, sizeof file);
     for (int k = 0; k < 18; k++) assert(at(k) == want[k]);
+    /* HOS_SCENE_HEIGHT is the handheld profile's: docked, the handheld set stays as read */
+    setenv("HOS_SCENE_HEIGHT", "720", 1);
+    unsetenv("HOS_DYNAMIC_RES");
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    for (int k = 0; k < 6; k++) assert(at(3 * k + 1) == 3840 && at(3 * k + 2) == 2160);
+    assert(hand_same());
+    unsetenv("HOS_SCENE_HEIGHT");
     /* a picture of its own shape (host/kirby_wide.c): the scene takes it, at least 1440 lines, at most 3840 x 2160's pixels */
     const uint32_t shape[][4] = {{3440, 1440, 3440, 1440}, {2560, 1080, 3412, 1440}, {5120, 1440, 5120, 1440},
                                  {5120, 2160, 4434, 1870}, {6256, 1760, 5428, 1526}, {2304, 1440, 2304, 1440}};
@@ -128,6 +173,19 @@ int main(void) {
     kirby_read_done(path, 0, file, sizeof file);
     assert(same());
     hos_wide_out = 0, hos_wide_ratio = 0.0f;
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(same());
+    /* HOS_SCENE_HEIGHT=720, handheld: the handheld set 1280 x 720, the docked table as read; with the game's steps
+       asked (HOS_DYNAMIC_RES=1), or the variable empty, the file as read */
+    setenv("HOS_SCENE_HEIGHT", "720", 1);
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(hand_all(1280, 720) && docked_same());
+    setenv("HOS_DYNAMIC_RES", "1", 1);
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(same());
+    unsetenv("HOS_DYNAMIC_RES");
+    setenv("HOS_SCENE_HEIGHT", "", 1);
     kirby_read_done(path, 0, file, sizeof file);
     assert(same());
     puts("ok");
