@@ -41,6 +41,7 @@
 #ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/inhale_env.h"
 #endif
+#include "kirby_option.h"   /* (inhale) HOS_AUDIO_CENTRE or its menu row */
 
 void hos_audio_source_load_async(void);                   /* (audio_source.c) read the player's archives on a worker */
 int hos_audio_source_ready(void);
@@ -1110,9 +1111,8 @@ static void output_error(const char *operation, MMRESULT result) {
 }
 /* (inhale) the centre also to the front pair at -3 dB in a 5.1 mix (see au_centre_spread_on's declaration). Here, in
    the output section, so tests/test_audio_output_errors.py compiles the log that names it with the rest */
-static int au_centre_spread_on(void) {
-    const char *v = getenv("HOS_AUDIO_CENTRE");
-    return !v || !env_value_off(v);   /* (on unless set off: env_on's rule, the other way round) */
+static int au_centre_spread_on(void) {   /* (the Audio tab's Centre in front speakers row under it: kirby_option.h) */
+    return kirby_option("HOS_AUDIO_CENTRE", "centre_to_front", 1);   /* (on unless set off: env_on's rule, the other way round) */
 }
 static inline void au_spread_centre(float out[6][FRAME], int six, int on) {
     if (!six || !on) return;

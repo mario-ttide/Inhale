@@ -2392,6 +2392,16 @@ handheld profile it gives all five sizes of the handheld set the 16:9 size of th
 read, as before. `HOS_DYNAMIC_RES=1` leaves it as read too. Docked is not changed. No default changes: which height
 the handheld profile should take by itself is not decided.
 
+**The menu rows over the switches** (`gpu/vk/menu/kirby_env_rows.cpp`, `host/kirby_option.h`). Graphics' Handheld scene
+size (`handheld_scene_size=`: 0 the file as read, 1 900, 2 720, 3 540, 4 360 lines; shown with the handheld profile),
+Graphics' Dynamic resolution (`kirby_dynamic_res=`; shown docked), Audio's Centre in front speakers
+(`centre_to_front=`) and Debug's Graphics queue order (`kirby_queue_order=`) are read by the host where it read the
+variable alone: the variable when it is set (`HOS_SCENE_HEIGHT` when it is a number), else the row's line in the
+options file through `hos_ini_option`. No `HOS_OPT_*` id: the ids are upstream's file (`gpu/vk/vk_api.h`), and the
+host reads each once, as the ScnCommon file loads, the first queue submission or the first 5.1 mix, so each row
+applies after a restart. A row whose variable is set is locked and says why. The options file is opened only for
+ScnCommon's reads, not every file's.
+
 | run (S5's walk, handheld) | scene | presents a second | GPU time a frame |
 |---|---|---|---|
 | Radeon 610M, default (`b1`, `g1080`) | 1920 x 1080 | 33.0, 33.2 | 27.2 ms |

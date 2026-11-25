@@ -42,6 +42,7 @@
 #ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/inhale_env.h"
 #endif
+#include "kirby_option.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,7 +67,7 @@ static uint64_t handed;         /* the value of the last one handed over */
 
 static int order_on(void) {
     static int on = -1;
-    if (on < 0) on = env_on_or("HOS_KIRBY_QUEUE_ORDER", 1);
+    if (on < 0) on = kirby_option("HOS_KIRBY_QUEUE_ORDER", "kirby_queue_order", 1);   /* (the Debug tab's Graphics queue order row) */
     return on;
 }
 

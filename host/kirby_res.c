@@ -16,19 +16,20 @@
    The steps are off by default: all six levels get the first one's size, so the docked scene never steps down (at the
    output's size where it is scaled, at 2560 x 1440 at any other output). At 3840 x 2160 the game stepped to 3360 x 1890
    with an RX 7900 XTX at 2.9 ms of a 16.6 ms frame: the steps cost sharpness on a PC that has no need of them.
-   HOS_DYNAMIC_RES=1 gives the game's steps back. The handheld profile (the menu's Profile row, HOS_HANDHELD) keeps the
+   HOS_DYNAMIC_RES=1 (or the menu's Dynamic resolution row) gives the game's steps back. The handheld profile (the menu's Profile row, HOS_HANDHELD) keeps the
    file as the game ships it, steps and all: it draws from another set of sizes (1920 x 1080 down), but was seen at a
    docked level's size too, so the fixed size is not given to it. The table's bytes are checked first: another version
    of the file is left as it is, and says so.
 
    The handheld set follows the docked levels in the file: five sizes, 1920 x 1080, 1600 x 900, 1120 x 630, 960 x 540,
    640 x 360. The game does not step down it under this PC's GPU load (docs/design.md, "handheld on a slow GPU"), so
-   HOS_SCENE_HEIGHT=<lines> holds the handheld scene at one size, 16:9, 360 to 1080 lines (the set's smallest and
+   HOS_SCENE_HEIGHT=<lines> (or the menu's Handheld scene size row) holds the handheld scene at one size, 16:9, 360 to 1080 lines (the set's smallest and
    largest): all five sizes become it. Under 720 lines the game upscales the scene with its network, which a card
    without it gets as a plain stretch (gpu/vk/kirby_upscale.h). */
 #ifndef INHALE_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/inhale_env.h"
 #endif
+#include "kirby_option.h"   /* (the rows over HOS_DYNAMIC_RES and HOS_SCENE_HEIGHT: kirby_option) */
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -102,7 +103,7 @@ int kirby_scn_handheld_patch(const char *guest, int64_t off, uint8_t *buf, uint6
     height = (height < 360 ? 360 : height > 1080 ? 1080 : height) & ~1u;
     const uint32_t size[2] = {(height * 16 / 9) & ~1u, height};
     for (size_t k = 0; k < sizeof kirby_scn_handheld; k += sizeof size) memcpy(buf + at + k, size, sizeof size);
-    hos_log("kirby: 3D frame %ux%u (handheld, fixed: HOS_SCENE_HEIGHT)", size[0], size[1]);
+    hos_log("kirby: 3D frame %ux%u (handheld, fixed: Handheld scene size or HOS_SCENE_HEIGHT)", size[0], size[1]);
     return 1;
 }
 
@@ -122,10 +123,18 @@ void kirby_read_done(const char *guest, int64_t off, uint8_t *buf, uint64_t n) {
     const uint64_t wide = hos_wide_out;
     const int shaped = hos_wide_ratio > 0.0f && wide && !hos_handheld();   /* (handheld: the file as read, as at 16:9) */
     if (shaped) kirby_scn_shape((uint32_t)wide, (uint32_t)(wide >> 32), &w, &h);
-    kirby_scn_patch(guest, off, buf, n, w, h, !hos_handheld() && !env_on("HOS_DYNAMIC_RES"), shaped);
-    /* (handheld: the scene held at HOS_SCENE_HEIGHT lines, unless the game's steps are asked for) */
-    const int lines = env_int("HOS_SCENE_HEIGHT", 0);
-    if (hos_handheld() && lines > 0 && !env_on("HOS_DYNAMIC_RES"))
+    /* (the Dynamic resolution row, kirby_dynamic_res=, under HOS_DYNAMIC_RES) */
+    const int steps = kirby_option("HOS_DYNAMIC_RES", "kirby_dynamic_res", 0);
+    kirby_scn_patch(guest, off, buf, n, w, h, !hos_handheld() && !steps, shaped);
+    /* (handheld: the scene held at HOS_SCENE_HEIGHT lines, else the Handheld scene size row's (handheld_scene_size=:
+       0 the game's sizes, 1 900, 2 720, 3 540, 4 360), unless the game's steps are asked for) */
+    static const int row_lines[] = {0, 900, 720, 540, 360};
+    int lines = env_int("HOS_SCENE_HEIGHT", -1);   /* (unset, empty or not a number: the row's) */
+    if (lines < 0) {
+        const int row = hos_ini_option("handheld_scene_size", 0);
+        lines = row >= 0 && row < 5 ? row_lines[row] : 0;
+    }
+    if (hos_handheld() && lines > 0 && !steps)
         kirby_scn_handheld_patch(guest, off, buf, n, (uint32_t)lines);
     void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n);   /* (the shadow map's size: kirby_shadow.c) */
     kirby_shadow_read(guest, off, buf, n);

@@ -38,6 +38,10 @@ FROZEN = {   # (a key: the value its row saves, as players' files hold them)
     "damage_taken": "&opts.damage_taken",
     "debug_tools": "&opts.debug_tools",
     "depth_of_field": "&opts.dof",   # (inhale: this game's Depth of field, gpu/vk/menu/kirby_dof.cpp)
+    "handheld_scene_size": "&opts.scene_size",   # (inhale: gpu/vk/menu/kirby_env_rows.cpp, read by host/kirby_res.c)
+    "kirby_dynamic_res": "&opts.kirby_dynres",   # (inhale: the same, host/kirby_res.c)
+    "centre_to_front": "&opts.centre_front",     # (inhale: the same, host/nn_audio.c)
+    "kirby_queue_order": "&opts.queue_order",    # (inhale: the same, host/kirby_queue.c)
     "pad_per_player": "&opts.pad_per_player",   # (inhale: One controller per player, gpu/vk/menu/kirby_coop.cpp)
     "drift_correction": "&opts.input_replay_sync",
     "descriptor_reuse": "&opts.descriptor_reuse",

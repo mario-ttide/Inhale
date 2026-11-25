@@ -65,7 +65,7 @@ def main():
         "kirby_dof.cpp: the row is not in the Detail section before Shadow resolution"
     menu = (ROOT / "gpu/vk/vk_menu.cpp").read_text(encoding="utf-8")
     assert "int dof = 1;" in (ROOT / "gpu/vk/vk_menu.h").read_text(encoding="utf-8")
-    assert "bool kirby_row(const Row& r) { return r.value == &opts.dof; }" in menu
+    assert "bool kirby_row(const Row& r) {\n    return r.value == &opts.dof ||" in menu
     shown = block(menu, "bool row_shown(int i) {")
     assert "(!kirby_row(rows[i]) || oot_game.load(std::memory_order_relaxed) != 1)" in shown, \
         "row_shown: the Depth of field row is not hidden for the other game"

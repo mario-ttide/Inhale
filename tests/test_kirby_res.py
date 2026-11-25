@@ -36,6 +36,12 @@ static uint32_t out_w = 3840, out_h = 2160;
 static int handheld;
 uint32_t hos_output_size(int height) { return height ? out_h : out_w; }
 int hos_handheld(void) { return handheld; }
+/* the options file's lines the menu wrote (host/kirby_option.h): kirby_dynamic_res= and handheld_scene_size=, -1 none */
+static int ini_dynres = -1, ini_scene = -1;
+int hos_ini_option(const char *key, int otherwise) {
+    const int v = !strcmp(key, "kirby_dynamic_res") ? ini_dynres : !strcmp(key, "handheld_scene_size") ? ini_scene : -1;
+    return v >= 0 ? v : otherwise;
+}
 void kirby_shadow_read(const char *guest, int64_t off, uint8_t *buf, uint64_t n) { (void)guest, (void)off, (void)buf, (void)n; }
 int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, uint32_t out_w, uint32_t out_h, int fixed,
                     int shaped);
@@ -188,6 +194,47 @@ int main(void) {
     setenv("HOS_SCENE_HEIGHT", "", 1);
     kirby_read_done(path, 0, file, sizeof file);
     assert(same());
+    /* the menu's Handheld scene size row with the variable unset (or empty): 1 900, 2 720, 3 540, 4 360 lines; 0 or a
+       hand-edited value out of range the file as read; the variable over it; the Dynamic resolution row on: as read */
+    static const uint32_t row_size[][2] = {{0, 0}, {1600, 900}, {1280, 720}, {960, 540}, {640, 360}};
+    for (int row = 0; row < 5; row++) {
+        ini_scene = row;
+        fresh();
+        kirby_read_done(path, 0, file, sizeof file);
+        assert(row ? hand_all(row_size[row][0], row_size[row][1]) && docked_same() : same());
+    }
+    unsetenv("HOS_SCENE_HEIGHT");
+    ini_scene = 9;
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(same());
+    ini_scene = 3;
+    setenv("HOS_SCENE_HEIGHT", "720", 1);
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(hand_all(1280, 720));
+    unsetenv("HOS_SCENE_HEIGHT");
+    ini_dynres = 1;
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(same());
+    setenv("HOS_DYNAMIC_RES", "0", 1);   /* (the variable over the row) */
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    assert(hand_all(960, 540));
+    unsetenv("HOS_DYNAMIC_RES");
+    ini_scene = -1;
+    /* docked: the Dynamic resolution row on gives the game's steps, as HOS_DYNAMIC_RES=1 does; the variable at 0 over it */
+    handheld = 0, out_w = 3840, out_h = 2160;
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    for (int k = 0; k < 18; k++) assert(at(k) == want[k]);
+    setenv("HOS_DYNAMIC_RES", "0", 1);
+    fresh();
+    kirby_read_done(path, 0, file, sizeof file);
+    for (int k = 0; k < 6; k++) assert(at(3 * k + 1) == 3840 && at(3 * k + 2) == 2160);
+    unsetenv("HOS_DYNAMIC_RES");
+    ini_dynres = -1;
     puts("ok");
     return 0;
 }

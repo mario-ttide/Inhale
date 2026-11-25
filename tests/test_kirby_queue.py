@@ -25,6 +25,8 @@ core and the window. The test then makes the game's own calls and checks:
 - every hand-over is made with the virtual core given up, and the core is back after each call;
 - HOS_KIRBY_QUEUE_ORDER=0 gives arrival order (A1, B, the present, A2), and so does upstream's HOS_NVN_HOLD=1, where
   the fix stands aside.
+- the menu's Graphics queue order row at Arrival (kirby_queue_order=0) gives arrival order too, with
+  HOS_KIRBY_QUEUE_ORDER unset; set to 1, the variable is over the row.
 
 Each way runs twice: with a queue's fence its own last submission, and with every fence the replay's latest (the real
 replay's answer while its render thread runs), where a fence is checked to be no lower than its submission's number.
@@ -143,6 +145,11 @@ static int env_on(const char *name) {   /* (the "1" and "0" of the runs below: u
     return v && *v && strcmp(v, "0") != 0;
 }
 void hos_log(const char *fmt, ...) { (void)fmt; }
+/* the options file (host/kirby_option.h): kirby_queue_order= as KIRBY_TEST_INI_QUEUE_ORDER has it, no line without it */
+int hos_ini_option(const char *key, int otherwise) {
+    const char *v = getenv("KIRBY_TEST_INI_QUEUE_ORDER");
+    return !strcmp(key, "kirby_queue_order") && v ? atoi(v) : otherwise;
+}
 static void die(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vprintf(fmt, ap); va_end(ap); exit(91); }
 static void check_handle(uint64_t h) { (void)h; }
 static void resolve_deferred(uint8_t *p) { (void)p; }
@@ -342,7 +349,10 @@ def main():
                         "-x", "c", str(ROOT / "host/kirby_queue.c"), "-x", "c", str(test), "-o", str(exe), "-pthread"],
                        check=True)
         # (each switch is read once, so each way is a run of its own)
-        for mode, switches in (("fixed", {}), ("arrival", {"HOS_KIRBY_QUEUE_ORDER": "0"}), ("hold", {"HOS_NVN_HOLD": "1"})):
+        # (the Debug tab's Graphics queue order row, kirby_queue_order=: Arrival as the variable's 0, the variable over it)
+        for mode, switches in (("fixed", {}), ("arrival", {"HOS_KIRBY_QUEUE_ORDER": "0"}), ("hold", {"HOS_NVN_HOLD": "1"}),
+                               ("arrival", {"KIRBY_TEST_INI_QUEUE_ORDER": "0"}),
+                               ("fixed", {"KIRBY_TEST_INI_QUEUE_ORDER": "0", "HOS_KIRBY_QUEUE_ORDER": "1"})):
             env = {k: v for k, v in os.environ.items() if k not in ("HOS_KIRBY_QUEUE_ORDER", "HOS_NVN_HOLD")}
             for fences in ("queue", "global"):
                 out = subprocess.run([str(exe), mode, fences], capture_output=True, text=True, env={**env, **switches})

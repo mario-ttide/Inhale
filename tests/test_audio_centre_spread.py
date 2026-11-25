@@ -4,7 +4,8 @@
 A headset's virtual surround or a driver can leave the centre channel of a 5.1 output out: what the game mixed there was
 silent while the front pair played. The real au_spread_centre and au_centre_spread_on are compiled with a small driver:
 in a six-channel mix the centre goes to front left and right at -3 dB as well and every other channel is untouched; a
-stereo mix is never changed; HOS_AUDIO_CENTRE=0 (or off, false, no) turns the spread off and unset or 1 leaves it on.
+stereo mix is never changed; HOS_AUDIO_CENTRE=0 (or off, false, no) turns the spread off and 1 leaves it on; unset,
+the Audio tab's Centre in front speakers row decides (centre_to_front= in the options file, on without a line).
 render_frame is read for the call: after the sink's channel map, before the limiter. No device is opened.
 
 python -I -B tests/test_audio_centre_spread.py [--cxx clang++]
@@ -30,6 +31,11 @@ FIXTURE = r"""
 #include <cstdlib>
 #include <cstring>
 #define FRAME 240
+static int ini_centre = -1;   // (the options file's centre_to_front=, -1 no line)
+int hos_ini_option(const char *key, int otherwise) {
+    return !std::strcmp(key, "centre_to_front") && ini_centre >= 0 ? ini_centre : otherwise;
+}
+#include "kirby_option.h"
 @HELPER@
 static void set_env(const char *v) {
 #ifdef _WIN32
@@ -80,6 +86,13 @@ int main() {
     check_on("1", 1);
     check_on("0", 0);
     check_on("off", 0);
+    // (the Audio tab's Centre in front speakers row, centre_to_front=: read with the variable unset, the variable over it)
+    ini_centre = 0;
+    check_on(nullptr, 0);
+    check_on("1", 1);
+    ini_centre = 1;
+    check_on(nullptr, 1);
+    check_on("0", 0);
     if (!failed) std::puts("ok");
     return failed;
 }
@@ -107,13 +120,14 @@ def main():
         work = Path(temporary)
         source, exe = work / "fixture.cpp", work / ("fixture.exe" if os.name == "nt" else "fixture")
         source.write_text(FIXTURE.replace("@HELPER@", helper), encoding="utf-8")
-        subprocess.run([compiler, "-std=c++17", "-include", ENV_ON_H, "-Wall", "-Wextra", "-Werror", str(source), "-o",
+        subprocess.run([compiler, "-std=c++17", "-include", ENV_ON_H, "-I", str(ROOT / "host"), "-Wall", "-Wextra",
+                        "-Werror", str(source), "-o",
                         str(exe)], check=True, timeout=120)
         result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
         print(result.stdout, end="")
         if result.returncode or "ok" not in result.stdout:
             raise SystemExit("a 5.1 mix does not spread its centre into the front pair as it should")
-    print("PASS: a 5.1 mix spreads its centre to the front pair at -3 dB; stereo untouched; HOS_AUDIO_CENTRE=0 turns it off")
+    print("PASS: a 5.1 mix spreads its centre to the front pair at -3 dB; stereo untouched; HOS_AUDIO_CENTRE=0 or the menu row's centre_to_front=0 turns it off")
 
 
 if __name__ == "__main__":

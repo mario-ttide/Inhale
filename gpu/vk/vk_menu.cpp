@@ -942,7 +942,10 @@ bool is_oot_row(const Row& r) {
            (v >= &opts.pad_speaker[0] && v < &opts.pad_speaker[0] + sizeof opts.pad_speaker / sizeof *opts.pad_speaker);
 }
 // (inhale) the rows made for this game: hidden only while the other game runs (oot_game 1)
-bool kirby_row(const Row& r) { return r.value == &opts.dof; }
+bool kirby_row(const Row& r) {
+    return r.value == &opts.dof || r.value == &opts.scene_size || r.value == &opts.kirby_dynres ||
+           r.value == &opts.centre_front || r.value == &opts.queue_order;
+}
 // (inhale: upstream's, gone from here with the row (menu/pipeline_list.cpp): row_shown hides the row by it)
 bool is_share_row(const Row& r) { return !r.value && r.tab == TAB_DEBUG && !strcmp(r.name, "Save my pipeline list"); }
 /// A row on its tab: the debug tools only with them on; a row for what this PC cannot run not at all (Reflex and Anti-Lag 2

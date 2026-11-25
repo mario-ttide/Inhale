@@ -48,7 +48,7 @@ sessions are lost.
 | Linux | ✅ The AppImage, tested on CachyOS with an AMD Radeon RX 7900 XTX (Mesa). It also starts in clean Ubuntu 22.04 and Fedora |
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
 | AMD cards on Windows | ⚠️ One tried, a Radeon 780M (integrated): v0.2.0 draws coloured discs over the picture there. Fixed in v0.3.0, checked on that card in the first stage only |
-| Intel cards | ⚠️ Iris Xe on Linux (Mesa) tried. Up to v0.3.1, Kirby and the enemies were drawn as clear shapes there. Fixed in v0.4.1. Integrated ones are slow: 20-28 frames a second reported on an Iris Xe with the handheld profile, 11 on a UHD 620 (23 with `HOS_SCENE_HEIGHT=540`, see Resolution below) |
+| Intel cards | ⚠️ Iris Xe on Linux (Mesa) tried. Up to v0.3.1, Kirby and the enemies were drawn as clear shapes there. Fixed in v0.4.1. Integrated ones are slow: 20-28 frames a second reported on an Iris Xe with the handheld profile, 11 on a UHD 620 (23 with **Handheld scene size** 960 x 540, see Resolution below) |
 | Cards without mesh shaders (such as NVIDIA GTX 10 and AMD RX 5000) | ⚠️ Should run through a slower compute path (upstream's). Not tried with this game |
 
 ## Install and play
@@ -135,23 +135,28 @@ bars at the sides), or another your screen has. **Output resolution** then lists
 **Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other 16:9 screen. On a screen of another shape it takes that shape, at least 1440 lines high
 and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440 one. The
-game's dynamic resolution is off, so the size stays fixed; set the environment variable `HOS_DYNAMIC_RES=1` to let the
-game lower it under load. The handheld profile draws the scene at the game's handheld size, 1920 x 1080, and does
-not lower it under your PC's load. On a slow graphics card, such as a laptop's integrated one, set the environment
-variable `HOS_SCENE_HEIGHT=720` with the handheld profile on: the scene is then drawn at 1280 x 720 and stretched to
-the screen (any height from 360 to 1080; on an integrated Radeon 610M 720 gave 56 frames a second where 1080 gave
-33, and on an Intel UHD 620 540 gave 23 where 1080 gave 11). Up to v0.5.1 the handheld profile could show a dark,
+game's dynamic resolution is off, so the size stays fixed; turn **Graphics, Dynamic resolution** on (docked profile,
+after a restart) to let the game lower it under load. The handheld profile draws the scene at the game's handheld size, 1920 x 1080, and does
+not lower it under your PC's load. On a slow graphics card, such as a laptop's integrated one, choose a smaller
+**Graphics, Handheld scene size** with the handheld profile on (after a restart): at 1280 x 720 the scene is drawn at
+that size and stretched to the screen (on an integrated Radeon 610M 1280 x 720 gave 56 frames a second where
+1920 x 1080 gave 33, and on an Intel UHD 620 960 x 540 gave 23 where 1920 x 1080 gave 11). The environment variable
+`HOS_SCENE_HEIGHT` sets any height from 360 to 1080 instead, such as `HOS_SCENE_HEIGHT=720`. Up to v0.5.1 the handheld profile could show a dark,
 enlarged corner of the scene for some seconds on a card without the game's upscaler (AMD and Intel integrated ones);
 fixed since. After you update
 Inhale Builder, choose **Update an existing game folder** to build your folder again with the new version.
 
-**If the picture goes wrong where an older version drew it right**, try the environment variable
-`HOS_KIRBY_QUEUE_ORDER=0` and report what you see. It hands the game's graphics work to your PC in the order of v0.2.0
+**If the picture goes wrong where an older version drew it right**, set **Debug, Graphics queue order** to Arrival
+(after a restart) and report what you see. It hands the game's graphics work to your PC in the order of v0.2.0
 and before, in which the crystal covering of the Star-Crossed World stages vanishes for single frames.
 
 **Sound on 5.1.** When the game mixes for 5.1, the centre channel also goes to the front pair at -3 dB, so a headset's
-virtual surround or a driver that drops the centre still plays what is on it. Set the environment variable
-`HOS_AUDIO_CENTRE=0` to keep the centre on its own channel only.
+virtual surround or a driver that drops the centre still plays what is on it. Turn **Audio, Centre in front
+speakers** off (after a restart) to keep the centre on its own channel only.
+
+Each of these four rows has an environment variable too, which wins over the row for that run and locks it:
+`HOS_DYNAMIC_RES=1`, `HOS_SCENE_HEIGHT=<lines>`, `HOS_KIRBY_QUEUE_ORDER=0`, `HOS_AUDIO_CENTRE=0`. Up to v0.5.1 three
+of them were environment variables only, with no row.
 
 ### Reporting a problem
 

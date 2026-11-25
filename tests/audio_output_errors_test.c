@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../host/audio_output_devices.h"
+#include "../host/kirby_option.h"   /* (inhale) au_centre_spread_on: HOS_AUDIO_CENTRE, else its menu row */
 
 typedef void *HWAVEOUT;
 typedef char *LPSTR;
@@ -38,6 +39,7 @@ static char requested_output[HOS_OUTPUT_ID_CAP];
 static unsigned requested_generation = 1;
 static int named_device = 1, route_state;
 static int fail_named_open;
+int hos_ini_option(const char *key, int otherwise) { (void)key; return otherwise; }   /* (inhale) no options file */
 static const char *test_getenv(const char *name) { return !strcmp(name, "HOS_AUDIO_DEVICE") ? device_override : NULL; }
 void hos_audio_output_preference(char *id, int capacity, unsigned *generation) {
     if (*generation != requested_generation) {
