@@ -260,8 +260,9 @@ def main():
         test = Path(tmp) / "test.c"
         test.write_text(FIXTURE, encoding="utf-8")
         exe = Path(tmp) / "test"
-        subprocess.run([args.cxx, "-x", "c", "-std=c11", "-Wall", "-Werror", str(ROOT / "host/kirby_res.c"), str(test),
-                        "-o", str(exe), "-lm"], check=True)
+        # (-x c before each file: g++ 16 takes the second of two .c files as C++ after a single one)
+        subprocess.run([args.cxx, "-std=c11", "-Wall", "-Werror", "-x", "c", str(ROOT / "host/kirby_res.c"), "-x", "c",
+                        str(test), "-o", str(exe), "-lm"], check=True)
         out = subprocess.run([str(exe)], capture_output=True, text=True)
         sys.stdout.write(out.stdout)
         assert out.returncode == 0 and out.stdout.rstrip().endswith("ok"), out.stderr
