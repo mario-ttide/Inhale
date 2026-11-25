@@ -39,6 +39,7 @@ sessions are lost.
 |---|---|
 | Opening, title screen, the first world's stages and its boss, several special stages | ✅ Played through, at 60 fps |
 | Later worlds | ❓ Not played yet |
+| Mouthful forms | ⚠️ Up to v0.6.0 Scissor-Lift Mouth and Ring Mouth were drawn wrong: a tiny, misplaced face, a pale flat body (issue #27). Fixed in v0.7.0, checked by hand on an AMD card on Linux; the other mouthful forms that drew the same way are not yet checked |
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies and keyboard | ✅ Work |
 | Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in v0.5.0; see below to bring back the last session's |
