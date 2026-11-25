@@ -138,8 +138,8 @@ bars at the sides), or another your screen has. **Output resolution** then lists
 
 **Resolution.** The 3D scene is drawn at your screen's size up to 5120 x 2880 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other 16:9 screen. On a screen of another shape it takes that shape, at least 1440 lines high
-and 2560 wide, and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440
-one, 2560 x 1600 on a 1920 x 1200 one. The
+and 2560 wide, and up to the pixels of 5120 x 2880: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440
+one, 5120 x 2160 on a 5120 x 2160 one, 2560 x 1600 on a 1920 x 1200 one. The
 game's dynamic resolution is off, so the size stays fixed; turn **Graphics, Dynamic resolution** on (docked profile,
 after a restart) to let the game lower it under load. The handheld profile draws the scene at the game's handheld size, 1920 x 1080, and does
 not lower it under your PC's load. On a slow graphics card, such as a laptop's integrated one, choose a smaller

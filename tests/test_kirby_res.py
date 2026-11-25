@@ -5,7 +5,7 @@ one's, and kirby_read_done's choice of it: fixed unless HOS_DYNAMIC_RES is set t
 steps are off by default), and never in the handheld profile, which keeps the file as read. There HOS_SCENE_HEIGHT=<lines>
 holds the scene at one 16:9 size, 360 to 1080 lines: the five sizes of the handheld set, which follows the docked table in
 the file, all become it, and the docked table stays as read. A picture of its own shape
-(this game's cameras at the screen's ratio, host/kirby_wide.c) gives the scene that shape, within the pixels of 3840 x 2160 and at least 2560 wide. The sizes in the fixture
+(this game's cameras at the screen's ratio, host/kirby_wide.c) gives the scene that shape, within the pixels of 5120 x 2880 and at least 2560 wide. The sizes in the fixture
 are the game's level sizes (numbers, no game data). And nn_fs.c's read calls it before the bytes are marked written.
 
     python -I tests/test_kirby_res.py --cxx clang++
@@ -154,19 +154,20 @@ int main(void) {
     for (int k = 0; k < 6; k++) assert(at(3 * k + 1) == 3840 && at(3 * k + 2) == 2160);
     assert(hand_same());
     unsetenv("HOS_SCENE_HEIGHT");
-    /* a picture of its own shape (host/kirby_wide.c): the scene takes it, at least 1440 lines, at most 3840 x 2160's pixels.
+    /* a picture of its own shape (host/kirby_wide.c): the scene takes it, at least 1440 lines, at most 5120 x 2880's pixels
+       (7680 x 2160, a picture only HOS_WIDE_MAX_PX gives, is over them).
        One narrower than 16:9 (16:10 at three outputs, 4:3, 5:4, 3:2) is at least 2560 wide as well, the width the window
        shows of its texture: the HUD's pass takes its depth target at the scene's size, and a narrower one cut the HUD at
        its width (2304 of 2560 at 16:10) */
     const uint32_t shape[][4] = {{3440, 1440, 3440, 1440}, {2560, 1080, 3412, 1440}, {5120, 1440, 5120, 1440},
-                                 {5120, 2160, 4434, 1870}, {6256, 1760, 5428, 1526}, {2304, 1440, 2560, 1600},
+                                 {5120, 2160, 5120, 2160}, {6256, 1760, 6256, 1760}, {7680, 2160, 7240, 2036}, {2304, 1440, 2560, 1600},
                                  {1920, 1200, 2560, 1600}, {1280, 800, 2560, 1600}, {1920, 1440, 2560, 1920},
                                  {1800, 1440, 2560, 2048}, {2256, 1504, 2560, 1706}, {2560, 1600, 2560, 1600}};
     for (unsigned i = 0; i < sizeof shape / sizeof *shape; i++) {
         uint32_t w, h;
         kirby_scn_shape(shape[i][0], shape[i][1], &w, &h);
         if (w != shape[i][2] || h != shape[i][3]) printf("shape %ux%u: %ux%u, expected %ux%u\n", shape[i][0], shape[i][1], w, h, shape[i][2], shape[i][3]), fflush(stdout);
-        assert(w == shape[i][2] && h == shape[i][3] && (uint64_t)w * h <= 3840u * 2160u && w >= 2560 && h >= 1440);
+        assert(w == shape[i][2] && h == shape[i][3] && (uint64_t)w * h <= 5120u * 2880u && w >= 2560 && h >= 1440);
     }
     fresh();
     assert(kirby_scn_patch(path, 0, file, sizeof file, 3440, 1440, 0, 1) == 1 && at(1) == 3440 && at(2) == 1440 && at(4) == 3010 &&

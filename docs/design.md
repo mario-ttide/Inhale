@@ -2754,3 +2754,26 @@ output; `c8k`). The game makes the targets and the scene's passes run at 7680 x 
 to 59 presents a second, VRAM 3.0 GB), but the picture in the first stage is black under the HUD
 (`c8k/vk_003900.png`). Why was not looked into. An output above 5120 x 2880's pixels is refused before that
 (`hos_output_parse`). Three for one is also not what Copy's linear filter averages: it reads four of each nine pixels.
+
+### 2026-11-25: the scene of a picture of another shape, up to 5120 x 2880's pixels
+
+A picture of another shape kept the limit the 16:9 one had before: `kirby_scn_shape` scaled its scene down to 3840 x
+2160's pixels, so a 21:9 screen at the 4K output (picture 5120 x 2144) drew a 4450 x 1862 scene and a 32:9 one
+(picture 6256 x 1760) a 5428 x 1526 one. The limit is now 5120 x 2880's pixels, as at 16:9 ("the scene at 5120 x
+2880"). The picture has at most 5120 x 2160's pixels (`hos_wide_max_px`), so each picture now gets its scene at its
+own size unless `HOS_WIDE_MAX_PX` asks for a larger one. A picture of 3840 x 2160's pixels or fewer (3440 x 1440,
+5120 x 1440) is as it was. The render targets' pool follows the picture, not the scene: unchanged.
+
+| run (RX 7900 XTX, headless, 3840 x 2160 output, 75 s to the first stage; `work/runs/fr/`) | scene | presents a second | GPU time a frame |
+|---|---|---|---|
+| `HOS_ASPECT=2.3889`, before (`w21b`) | 4450 x 1862 | 60.0 | 4.7 ms |
+| `HOS_ASPECT=2.3889` (`w21a`, `w21a2`) | 5120 x 2144 | 60.0 | 5.4 ms |
+| `HOS_ASPECT=3.5556`, before (`w32b`) | 5428 x 1526 | 60.0 | 4.9 ms |
+| `HOS_ASPECT=3.5556` (`w32a`) | 6256 x 1760 | 60.0 | 5.8 ms |
+
+The scene's size is the log's `kirby: 3D frame` line and the pass of `5be22000a0782116`. The shots in the first stage
+(`w21a2/vk_004200.png`, `w32a/vk_004200.png`) show the stage whole and the HUD in its place: a scene wider than 5120
+draws. Test: `tests/test_kirby_res.py` (5120 x 2160 and 6256 x 1760 kept, 7680 x 2160 scaled to 7240 x 2036). Not
+checked: a screen or window of these shapes (the runs are headless, the shape from `HOS_ASPECT`), a 5120 x 2160
+output of its own shape, a picture over the limit (`HOS_WIDE_MAX_PX`), a slower GPU, VRAM use, Windows, NVIDIA, a
+whole stage or a boss.

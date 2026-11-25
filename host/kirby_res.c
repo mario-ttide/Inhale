@@ -10,8 +10,8 @@
    2560 x 1440 and 5120 x 2880 (the largest 16:9 output there is, nn_applet.c hos_output_parse; the game's own size table,
    main+0x9aaa70, ends at 3840 x 2160, and the game draws a 5120 x 2880 scene all the same: docs/design.md, "the scene at
    5120 x 2880"): at 3840 x 2160 they become 3840 x 2160 down to 1280 x 720. A picture of another shape (21:9, 32:9, 16:10: host/kirby_wide.c gives the cameras its
-   ratio) takes the picture's shape, at least 1440 lines high and at most 3840 x 2160's pixels: 3440 x 1440 for a 3440 x
-   1440 output, 5120 x 1440 for 5120 x 1440, 4434 x 1870 for 5120 x 2160 (docs/design.md, "issue #20"), and at least
+   ratio) takes the picture's shape, at least 1440 lines high and at most 5120 x 2880's pixels: 3440 x 1440 for a 3440 x
+   1440 output, 5120 x 1440 for 5120 x 1440, 5120 x 2160 for 5120 x 2160 (docs/design.md, "issue #20"), and at least
    2560 wide: 2560 x 1600 for 1920 x 1200 (kirby_scn_shape). Another output keeps the game's sizes.
 
    The steps are off by default: all six levels get the first one's size, so the docked scene never steps down (at the
@@ -108,14 +108,14 @@ int kirby_scn_handheld_patch(const char *guest, int64_t off, uint8_t *buf, uint6
     return 1;
 }
 
-/* The scene for a picture of pw x ph: its shape, at least 1440 lines (the game's own) and at most 3840 x 2160's pixels (the
-   largest the game was seen to draw), each side even. And at least 2560 wide, for a picture narrower than 16:9: the
+/* The scene for a picture of pw x ph: its shape, at least 1440 lines (the game's own) and at most 5120 x 2880's pixels (the
+   largest the game was seen to draw: docs/design.md, "the scene at 5120 x 2880"), each side even. And at least 2560 wide, for a picture narrower than 16:9: the
    game draws the HUD and menus over the 2560 x 1440 the window shows of its texture, in a pass whose depth target has
    the scene's size, and a pass ends where its smallest target does. With a 2304 x 1440 scene (16:10) the HUD's right
    tenth was not drawn (docs/design.md, "16:10: the HUD cut at the scene's width") */
 void kirby_scn_shape(uint32_t pw, uint32_t ph, uint32_t *w, uint32_t *h) {
     double s = ph && ph < 1440 ? 1440.0 / ph : 1.0;
-    const double px = (double)pw * ph * s * s, most = 3840.0 * 2160.0;
+    const double px = (double)pw * ph * s * s, most = 5120.0 * 2880.0;
     if (px > most) s *= sqrt(most / px);
     *w = (uint32_t)(pw * s) & ~1u, *h = (uint32_t)(ph * s) & ~1u;
     if (pw && *w < 2560) *w = 2560, *h = (uint32_t)((uint64_t)2560 * ph / pw) & ~1u;
