@@ -1,6 +1,7 @@
-"""On a picture wider than 16:9 this game's pause background and its cutscene bars keep the picture's width, and its
-full-screen movies their 16:9 shape, while its HUD and menus are narrowed (gpu/vk/kirby_wide.h, gpu/vk/vk_draw.cpp draw;
-docs/design.md, "issue #20, ultrawide").
+"""On a picture wider than 16:9 this game's pause background and its cutscene bars keep the picture's width, its
+full-screen movies their 16:9 shape, and a wipe's cover, the loading screen and the stage panel's picture reach the
+picture's edges, while its HUD and menus are narrowed (gpu/vk/kirby_wide.h, gpu/vk/vk_draw.cpp draw; docs/design.md,
+"issue #20, ultrawide").
 
 nx2/kirby_wide.py narrows every layout camera still at 16:9 on a picture wider than 16:9. The pause menu's background, a
 blurred capture of the whole picture drawn by such a camera, then covered only the middle 16:9, and so did the black
@@ -22,7 +23,28 @@ once a picture (the block reads the ratio once): 32:9, 21:9, 16:9, 16:10 and 4:3
 - a viewport of 0 x 0 (the whole target) is widened from the target's size;
 - the pane is read from guest memory only after the cheaper checks pass.
 
-At 16:9, 16:10 and 4:3 the background, the bar and the movie are all left.
+The wipes, the loading screen and the stage panel (draws measured on a walk into a stage and out of it), into the
+3840 x 2160 window texture of which 2560 x 1440 is shown, by a layout's program (its vertex stage reads its constants
+up to the pane) under a narrowed camera:
+
+- a pane over the whole layout (the loading screen's fill, a wipe's cover with the star's hole, a cover that shows a
+  layer, the stage panel's picture, a 480 x 270 pane scaled by 4): the block calls draw() twice before the draw itself,
+  once a side strip. Each strip's scissor is the strip to the pixel, its viewport is within the device's limit and
+  puts the pane's outer edge on the picture's edge, and the strip shows a tenth of the layout at most; the draw itself
+  has the game's viewport and scissor, and both are given back. A nested draw applies nothing: no deeper level;
+- a pane in one corner of the screen (the loading screen's two blots): no strip, its viewport moved aside so that the
+  pane's outer edge is on the picture's edge, its width the game's (a strip would smear the blot along the side);
+- none for a mesh, indirect or occlusion-query draw or with a copy of the target open; with a viewport limit of 4096
+  the whole pane is widened instead (a corner's pane is moved all the same);
+- a wipe's layer, a 2560 x 1440 target that is not the last present's: each of its draws widened by the ratio over
+  16:9 about its centre, the fill too; a pane in one corner is put off the target (not drawn). Left: a camera of the target's own, a blur with the last layout's constants
+  still bound, the window texture, any target before the first present;
+- left: a pane larger than the layout, a star outline, a HUD pane, a button that slides over the right edge, the pause
+  menu's glow on the edge, a turned pane in a corner, a whole pane moved aside, a program that reads no layout
+  constants, a camera not narrowed, the other game;
+- the stage's name on the loading screen (a 1920 x 120 pane of text the GPU drew, a bar's shape): left.
+
+At 16:9, 16:10 and 4:3 all of these are left.
 
 python -I -B tests/test_kirby_wide_keep.py [--cxx clang++]
 """
@@ -47,6 +69,7 @@ FIXTURE = r"""
 #include <cstring>
 #include <initializer_list>
 #include <vector>
+#include "kirby_upscale.h"   // (the last present's texture size: what tells the window texture from a layer's target)
 #include "kirby_wide.h"
 namespace mkwvk {
 static int oot = 0;   // (vk_menu.cpp's oot_game: 0 this game, 1 the other)
@@ -54,25 +77,47 @@ bool menu_oot_rows() { return oot != 0; }
 struct Texture { uint32_t width = 0, height = 0; bool gpu_written = false; };
 struct Targets { Texture* color[8]{}; int n = 0; uint32_t width = 0, height = 0; };
 struct nvn_p_bind_buf { uint64_t addr = 0; uint32_t size = 0; };
-struct NvnState { float viewport[16][4]{}; nvn_p_bind_buf ubo[6][16]{}; };
-struct Program { uint64_t key = 0; bool fallback = false; };
+struct NvnState { float viewport[16][4]{}; nvn_p_bind_buf ubo[6][16]{}; int32_t scissor[4]{}; };
+// (a program's stages: what its vertex stage (0) reads of its constant buffers, c3 the layouts')
+struct Stage { int nvn_stage = 0; struct { uint32_t constant_buffer_used_sizes[8]{}; } info; };
+struct Program { uint64_t key = 0; bool fallback = false; std::vector<Stage> stages; };
+struct DrawArgs { bool mesh = false; uint64_t indirect = 0; void* occ_pool = nullptr; };
+static struct { struct { struct { uint32_t maxViewportDimensions[2] = {16384, 16384}; } limits; } props; } dev;
 struct Host { float (*aspect_ratio)(void); };
 static float picture = 0.0f;
 static float picture_ratio() { return picture; }
 static Host host_v{picture_ratio};
 static Host* host = &host_v;
-static float pane_mem[4];
-static int pane_reads;
+// (a layout's vertex constants: the camera's m00 at +0 and m11 at +20, the pane's matrix at +64 (three rows of four),
+// the pane at +528)
+static float c3_mem[140];
+static float* const pane_mem = c3_mem + mkwvk::kirby_wide::kPaneAt / 4;
+static int pane_reads;   // (every read of the constants)
 static bool memory_read_as_submitted(uint64_t addr, void* out, uint64_t n) {
-    if (addr != 0x1000 + mkwvk::kirby_wide::kPaneAt || n != 16) return false;
+    if (addr < 0x1000 || addr + n > 0x1000 + sizeof c3_mem) return false;
     pane_reads++;
-    std::memcpy(out, pane_mem, 16);
+    std::memcpy(out, (const char*)c3_mem + (addr - 0x1000), n);
     return true;
 }
 static std::vector<const Texture*> sampled;
 static std::vector<const Texture*>& gfx_sampled() { return sampled; }
-static float seen[4];   // (the viewport dynamic_state saw)
-static void dynamic_state(int, const NvnState& s, const Targets&, int, bool, const Program&) { std::memcpy(seen, s.viewport[0], 16); }
+static float seen[4];   // (the viewport dynamic_state saw for the draw itself)
+static int32_t seen_sc[4];
+// (a draw of draw()'s own, for a side strip: its viewport, its scissor and how deep it is nested; before == true when
+// the draw itself had not set its state yet)
+struct Nested { float vp[4]; int32_t sc[4]; int depth; bool before; };
+static std::vector<Nested> nested;
+static int depth;
+static bool main_set;
+static void dynamic_state(int, const NvnState& s, const Targets&, int, bool, const Program&) {
+    if (depth) {
+        Nested n{};
+        std::memcpy(n.vp, s.viewport[0], 16), std::memcpy(n.sc, s.scissor, 16), n.depth = depth, n.before = !main_set;
+        nested.push_back(n);
+        return;
+    }
+    std::memcpy(seen, s.viewport[0], 16), std::memcpy(seen_sc, s.scissor, 16), main_set = true;
+}
 // (Vulkan's clear of a part of the pass's targets: what the block clears is kept)
 struct VkOffset2D { int32_t x, y; };
 struct VkExtent2D { uint32_t width, height; };
@@ -93,12 +138,24 @@ static void vkCmdClearAttachments(int, uint32_t n, const VkClearAttachment* a, u
     }
 }
 #define FINE_SCOPE(x)
+static bool feedback_open;   // (the draw goes into a copy of its target: vk_feedback.h)
+static const Targets* draw_at;
+static const Program* draw_p;
+static void draw(int cmd, NvnState& s, const DrawArgs& d);
 // (the block runs once a draw: the static ratio is read at the first, as in draw())
-static void draw_block(NvnState& s, const Targets& at, const Program& p) {
-    const int cmd = 0, topo = 0;
-    struct { bool mesh = false; } d;
-    (void)cmd, (void)topo;
+static void draw_block(int cmd, NvnState& s, const DrawArgs& d, const Targets& at, const Program& p) {
+    const int topo = 0;
+    const Targets copy = at;
+    const Targets* at_pass = feedback_open ? &copy : &at;
+    (void)cmd, (void)topo, (void)at_pass, (void)dev, (void)d;
 @BLOCK@
+}
+// (draw() called from its own block: the block again, one level down; a block that nests without end stops here)
+static void draw(int cmd, NvnState& s, const DrawArgs& d) {
+    if (depth >= 4) return;
+    depth++;
+    draw_block(cmd, s, d, *draw_at, *draw_p);
+    depth--;
 }
 }  // namespace mkwvk
 using namespace mkwvk;
@@ -117,14 +174,25 @@ int main(int argc, char** argv) {
     NvnState s;
     s.viewport[0][0] = 0, s.viewport[0][1] = 0, s.viewport[0][2] = 2560, s.viewport[0][3] = 1440;
     s.ubo[0][0].addr = 0x1000, s.ubo[0][0].size = 560;
-    Program p{0xc7974d16c805e580ull, false};
+    // (a layout's program: its vertex stage reads its constants up to the pane, 560 bytes. Every layout camera is
+    // narrowed by 16:9 over the picture's ratio on a wide picture: m11 / m00 is then the picture's ratio)
+    Stage layout_vs;
+    layout_vs.info.constant_buffer_used_sizes[3] = 560;
+    Program p{0xc7974d16c805e580ull, false, {layout_vs}};
+    c3_mem[0] = 2.0f / 1920.0f * (wide ? game / picture : 1.0f), c3_mem[5] = 2.0f / 1080.0f;
+    float* const matrix = c3_mem + 16;   // (scale x, shear, -, shift x; shear, scale y, -, shift y)
+    const auto place = [&](float sx, float tx, float sy, float ty) { matrix[0] = sx, matrix[3] = tx, matrix[5] = sy, matrix[7] = ty; };
+    place(1, 0, 1, 0);
+    mkwvk::kirby_upscale::note_present(2560, 1440, nullptr);   // (the window texture of these cases)
+    DrawArgs d;
     const float bg[4] = {2398, 1478, -1199, 739}, frost[4] = {228, 80, -114, 40}, off[4] = {2398, 1478, -1000, 739};
     const auto run = [&](const float* pane) {
         std::memcpy(pane_mem, pane, 16);
-        draw_block(s, at, p);
+        nested.clear(), main_set = false, draw_at = &at, draw_p = &p;
+        draw_block(0, s, d, at, p);
     };
-    const auto left = [&] { return seen[0] == 0 && seen[2] == 2560; };
-    const auto widened = [&] { return near(seen[0], 1280 - 1280 * k) && near(seen[2], 2560 * k); };
+    const auto left = [&] { return seen[0] == 0 && seen[2] == 2560 && nested.empty(); };
+    const auto widened = [&] { return near(seen[0], 1280 - 1280 * k) && near(seen[2], 2560 * k) && nested.empty(); };
     sampled = {&text, &capture};
     run(bg);
     check(widened(), "the pause background's viewport wider by the ratio over 16:9 about its centre (left as it is at 16:9 or narrower)");
@@ -194,6 +262,7 @@ int main(int argc, char** argv) {
     Texture window4k{3840, 2160, true}, y{1920, 1080, true}, uv{960, 540, true};
     Texture hint{480, 270, true}, hint_y{480, 270, true}, hint_uv{240, 135, true};
     p.key = 0x6f37d965729ec917ull;
+    p.stages.clear();
     at.color[0] = &window4k;
     sampled = {&y, &uv};
     run(bar);   // (the constants of the last layout drawn: a bar's must not widen it)
@@ -229,6 +298,219 @@ int main(int argc, char** argv) {
     check(seen[0] == 0 && seen[2] == 480, "a hint video (the frame into a target of its own size): left");
     check(cleared.empty(), "no draw but the narrowed movie clears anything");
     s.viewport[0][2] = 2560, s.viewport[0][3] = 1440;
+
+    // ---- The wipes, the loading screen and the stage panel (measured at 5120 x 1440: work/runs/w26) ----
+    // The window texture is 3840 x 2160, of which 2560 x 1440 is shown; a wipe's layer is drawn into a 2560 x 1440
+    // target of its own
+    Texture layer{2560, 1440, true}, title{1920, 120, true};
+    const int crop[4] = {0, 0, 2560, 1440};
+    mkwvk::kirby_upscale::note_present(3840, 2160, crop);
+    at.color[0] = &window4k;
+    p.stages = {layout_vs};
+    const float full[4] = {1920, 1080, -960, 540}, big[4] = {1976, 1136, -988, 568}, ray[4] = {22, 512, -11, 256};
+    const float outline[4] = {500, 500, -250, 250}, name[4] = {1920, 120, -960, 60};
+    const float q = wide ? game / picture : 1.0f;   // (what a layout camera is narrowed by)
+    // (the columns of the middle 16:9: a pixel is the main draw's when its centre is inside the narrowed pane)
+    int32_t mid0 = 0, mid1 = 2560;
+    while (mid0 + 0.5f < 1280 - 1280 * q) mid0++;
+    while (mid1 - 0.5f >= 1280 + 1280 * q) mid1--;
+    // Two draws of the block's own before the draw itself, one a side strip: the scissors are exactly the two strips,
+    // the pane's outer edge is on the picture's edge (NDC -q at the left, +q at the right), the strip shows a slice of
+    // the pane no wider than a tenth of the layout, the viewport is within the device's limit, and the draw itself
+    // has the game's viewport and scissor
+    const auto stripped = [&](const char* what, int sides = 3) {
+        char text[200];
+        const auto say = [&](bool ok, const char* part) {
+            std::snprintf(text, sizeof text, "%s: %s", what, part);
+            check(ok, text);
+        };
+        if (!wide) return say(left(), "left on a picture not wider than 16:9");
+        const size_t want = sides == 3 ? 2 : 1;
+        say(nested.size() == want, sides == 3 ? "two draws of its own, one a side strip" : "one draw of its own, the strip of its side");
+        if (nested.size() != want) return;
+        const float limit = (float)dev.props.limits.maxViewportDimensions[0];
+        for (size_t j = 0; j < want; j++) {
+            const Nested& n = nested[j];
+            const int i = sides == 3 ? (int)j : sides - 1;   // (0 the left strip, 1 the right)
+            say(n.depth == 1 && n.before, "a strip's draw is one level down and before the draw itself");
+            say(n.sc[0] == (i ? mid1 : 0) && n.sc[0] + n.sc[2] == (i ? 2560 : mid0) && n.sc[1] == 0 && n.sc[3] == 1440,
+                "a strip's scissor is the strip, to the pixel");
+            say(n.vp[2] > 2560 && n.vp[2] <= limit && n.vp[1] == 0 && n.vp[3] == 1440, "a strip's viewport is wider than the game's, within the limit");
+            // (where the viewport puts the pane's outer edge, and how much of the layout's 1920 units the strip shows)
+            const float outer = n.vp[0] + n.vp[2] * 0.5f * (1.0f + (i ? q : -q));
+            const float slice = (float)n.sc[2] / (n.vp[2] * q) * 1920.0f;
+            say(near(outer, i ? 2560.0f : 0.0f), "the pane's outer edge is on the picture's edge");
+            say(slice > 0.0f && slice <= 192.0f, "a strip shows the pane's outer tenth at most");
+        }
+        say(seen[0] == 0 && seen[1] == 0 && seen[2] == 2560 && seen[3] == 1440 && seen_sc[0] == 0 && seen_sc[2] == 2560 &&
+            seen_sc[1] == 0 && seen_sc[3] == 1440, "the draw itself has the game's viewport and scissor");
+        say(s.viewport[0][0] == 0 && s.viewport[0][2] == 2560 && s.scissor[0] == 0 && s.scissor[2] == 2560 && s.scissor[3] == 1440,
+            "the game's viewport and scissor are back after the draw");
+    };
+    s.scissor[0] = 0, s.scissor[1] = 0, s.scissor[2] = 2560, s.scissor[3] = 1440;
+    // (the loading screen's fill: the plain pane program, an 8 x 8 texture the game uploaded, no blend)
+    p.key = 0x5cfce03bc8b25357ull;
+    sampled = {};
+    run(full);
+    stripped("the loading screen's fill");
+    // (the cover of the wipe out of a stage: a fill with the star's hole cut by a 1080 x 1080 mask, all uploaded)
+    p.key = 0xb96bfac902d1c5f1ull;
+    run(full);
+    stripped("a wipe's cover with the star's hole");
+    // (the cover of the wipe into a stage: the loading screen's layer, drawn off screen, through the same mask. The
+    // layer is 16:9, not of the picture's shape: it is no capture of the picture)
+    p.key = 0xf188a9d1a6fe0c21ull;
+    sampled = {&layer};
+    run(full);
+    stripped("a wipe's cover that shows a layer");
+    // (the stage panel's preview: two 1920 x 1080 pictures the game uploaded)
+    p.key = 0x1a89a565c8e2f0b3ull;
+    sampled = {};
+    run(full);
+    stripped("a full-screen picture");
+    // (a viewport of 0 x 0 is the whole target, and a scissor of 0 x 0 none)
+    at.width = 2560, at.height = 1440;
+    s.viewport[0][2] = 0, s.viewport[0][3] = 0, s.scissor[2] = 0, s.scissor[3] = 0;
+    run(full);
+    if (wide)
+        check(nested.size() == 2 && nested[0].sc[0] == 0 && nested[0].sc[2] == mid0 && nested[1].sc[0] == mid1 && nested[1].sc[3] == 1440 &&
+              nested[0].vp[3] == 1440 && seen[2] == 0 && seen[3] == 0 && seen_sc[2] == 0, "the strips of a viewport of 0 x 0: of the whole target");
+    check(s.viewport[0][2] == 0 && s.viewport[0][3] == 0 && s.scissor[2] == 0 && s.scissor[3] == 0, "and both given back as 0 x 0");
+    s.viewport[0][2] = 2560, s.viewport[0][3] = 1440, s.scissor[2] = 2560, s.scissor[3] = 1440;
+    // (not for a draw that cannot be drawn again as it is)
+    p.key = 0x5cfce03bc8b25357ull;
+    d.mesh = true;
+    run(full);
+    check(left(), "a mesh draw over the whole layout: left");
+    d = DrawArgs{};
+    d.indirect = 0x2000;
+    run(full);
+    check(left(), "an indirect draw over the whole layout: left");
+    d = DrawArgs{};
+    d.occ_pool = &d;
+    run(full);
+    check(left(), "a draw with an occlusion query over the whole layout: left");
+    d = DrawArgs{};
+    feedback_open = true;
+    run(full);
+    check(left(), "a draw into a copy of its target (it samples what it writes): left");
+    feedback_open = false;
+    // (a device whose widest viewport cannot stretch the slice: the pane is widened whole instead)
+    dev.props.limits.maxViewportDimensions[0] = 4096;
+    run(full);
+    check(widened(), "a viewport limit of 4096: the pane widened by the ratio over 16:9, no strip");
+    dev.props.limits.maxViewportDimensions[0] = 16384;
+    // (left as they are)
+    // (the loading screen's two blots: 900 x 500 panes in the top left and the bottom right corner, the second 2 units
+    // past the edge; and a pane of the stage panel's preview, 480 x 270 scaled by 4)
+    const float blot_l[4] = {900, 500, 0, 0}, blot_r[4] = {900, 500, -900, 500}, quarter[4] = {480, 270, -240, 135};
+    const float button[4] = {530, 128, -265, 64}, halo[4] = {1950, 975, -975, 0};
+    p.key = 0x17c677b41ed0780cull;
+    place(1, -960, 0.85f, 540);
+    // (moved, not stretched: the viewport keeps its width and goes aside by half of what the camera's narrowing leaves,
+    // so the pane's outer edge is on the picture's edge and its shape is the game's; no strip, which would smear it)
+    const auto moved = [&](int side) {
+        const float dx = (side == 1 ? -1280.0f : 1280.0f) * (1.0f - q);
+        return near(seen[0], dx) && seen[1] == 0 && seen[2] == 2560 && seen[3] == 1440 && nested.empty() && s.viewport[0][0] == 0 && s.viewport[0][2] == 2560;
+    };
+    run(blot_l);
+    check(moved(1), "a blot in the top left corner: moved whole to the picture's left edge, no strip");
+    place(1, 962, 0.85f, -540);
+    run(blot_r);
+    check(moved(2), "a blot in the bottom right corner: moved whole to the picture's right edge, no strip");
+    p.key = 0x96eec856a2d41f77ull;
+    place(4, 0, 4, 0);
+    run(quarter);
+    stripped("a pane scaled up to the whole layout");
+    p.key = 0x5cfce03bc8b25357ull;
+    place(1, 698, 1, -380);
+    run(button);
+    check(left(), "a button that slides in over the right edge (its top and bottom inside the layout): left");
+    place(0.632f, 344, 0.76f, 42);
+    run(halo);
+    check(left(), "the pause menu's glow, its side on the layout's edge: left");
+    place(1, -960, 0.85f, 540);
+    matrix[1] = 0.5f, matrix[4] = -0.5f;
+    run(blot_l);
+    check(left(), "a turned pane in a corner (a ray): left");
+    matrix[1] = 0, matrix[4] = 0;
+    place(1, 30, 1, 0);
+    run(full);
+    check(left(), "a whole pane moved aside (it slides): left");
+    dev.props.limits.maxViewportDimensions[0] = 4096;
+    place(1, -960, 0.85f, 540);
+    run(blot_l);
+    check(moved(1), "a viewport limit of 4096 and a pane in one corner: moved all the same (no wide viewport needed)");
+    dev.props.limits.maxViewportDimensions[0] = 16384;
+    place(1, 0, 1, 0);
+    run(big);
+    check(left(), "a pane larger than the layout with pictures the game uploaded: left");
+    run(outline);
+    check(left(), "a star outline (500 x 500): left");
+    run(frost);
+    check(left(), "a HUD pane: left");
+    p.stages.clear();
+    run(full);
+    check(left(), "a program that reads no layout constants, the last layout's whole pane still bound: left");
+    p.stages = {layout_vs};
+    const float narrowed_m00 = c3_mem[0];
+    c3_mem[0] = 2.0f / 1920.0f;
+    run(full);
+    check(wide ? left() : true, "a whole pane under a camera that is not narrowed: left");
+    c3_mem[0] = narrowed_m00;
+    oot = 1;
+    pane_reads = 0;
+    run(full);
+    check(left() && pane_reads == 0, "the other game's whole pane: left, its constants not read");
+    oot = 0;
+    // (the stage's name on the loading screen: a 1920 x 120 pane of text the GPU drew. A cutscene's bar is of that
+    // shape, with textures the game uploaded)
+    p.key = 0x36da1a91054fc5e9ull;
+    sampled = {&title};
+    run(name);
+    check(left(), "the stage's name, a pane of a bar's shape with text the GPU drew: left");
+
+    // A wipe's layer: the loading screen drawn into a 16:9 target of its own (2560 x 1440) by the narrowed cameras, then
+    // shown by a narrowed pane. Its draws are widened back, so that the layer holds the screen at 16:9
+    at.color[0] = &layer;
+    p.key = 0x5cfce03bc8b25357ull;
+    sampled = {};
+    run(ray);
+    check(widened(), "a layer's draw (a ray, 22 x 512): its viewport wider by the ratio over 16:9 about its centre");
+    check(s.viewport[0][0] == 0 && s.viewport[0][2] == 2560, "the game's viewport is back after the layer's draw");
+    run(full);
+    check(widened(), "a layer's fill: widened as the layer's other draws, no strip");
+    // (a blot in the layer would end at the layer's side, and the cover's strips would smear it over the picture's:
+    // the blots are not in a wipe's layer, they come with the loading screen itself)
+    place(1, -960, 0.85f, 540);
+    run(blot_l);
+    check(!wide ? left() : nested.empty() && seen[2] == 2560 && (seen[0] >= 2560 || seen[0] <= -2560),
+          "a blot in a wipe's layer: its viewport off the target (not drawn), on a wide picture");
+    check(s.viewport[0][0] == 0 && s.viewport[0][2] == 2560, "the game's viewport is back after the layer's blot");
+    place(1, 0, 1, 0);
+    c3_mem[0] = 2.0f / 2560.0f, c3_mem[5] = -2.0f / 1440.0f;
+    run(ray);
+    check(left(), "a draw into a 16:9 target under a camera of the target's own (not narrowed): left");
+    c3_mem[0] = narrowed_m00, c3_mem[5] = 2.0f / 1080.0f;
+    p.stages.clear();
+    p.key = 0x21240c5afa2d2e61ull;
+    run(ray);
+    check(left(), "a blur into a 16:9 target, the last layout's constants still bound: left");
+    p.stages = {layout_vs};
+    p.key = 0x5cfce03bc8b25357ull;
+    mkwvk::kirby_upscale::note_present(2560, 1440, nullptr);
+    run(ray);
+    check(left(), "a draw into the window texture (the last present's size): not widened as a layer's");
+    mkwvk::kirby_upscale::texture.store(0);
+    run(ray);
+    check(left(), "before the first present: no target is taken for a layer's");
+    mkwvk::kirby_upscale::note_present(3840, 2160, crop);
+    oot = 1;
+    run(ray);
+    check(left(), "the other game's draw into a 16:9 target: left");
+    oot = 0;
+    for (const Nested& n : nested) check(n.depth == 1, "no draw of the block's own nests further");
+    at.color[0] = &window;
 
     // (the factor on the header, as before)
     const mkwvk::kirby_wide::Sampled c21{215, 90, true};
@@ -269,10 +551,11 @@ def main():
             if result.returncode or "ok" not in result.stdout:
                 failed.append(name)
     if failed:
-        raise SystemExit("a wide picture's pause background, cutscene bar or movie is not as it should be, or another "
-                         "draw is changed: " + ", ".join(failed))
-    print("PASS: the pause background and the cutscene bars at the picture's width, the movie at 16:9, at 32:9 and 21:9; "
-          "HUD panes, hint videos, Copy, the other game, 16:9, 16:10 and 4:3 left")
+        raise SystemExit("a wide picture's pause background, cutscene bar, movie, wipe or loading screen is not as it should "
+                         "be, or another draw is changed: " + ", ".join(failed))
+    print("PASS: the pause background and the cutscene bars at the picture's width, the movie at 16:9, a wipe's cover and "
+          "the loading screen out to the picture's edges, a wipe's layer at 16:9, at 32:9 and 21:9; HUD panes, hint "
+          "videos, Copy, the other game, 16:9, 16:10 and 4:3 left")
 
 
 if __name__ == "__main__":

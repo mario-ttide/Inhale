@@ -127,7 +127,9 @@ Motion controls follow the controller used last. Xbox controllers read through X
 **Ultrawide and other shapes.** On a 21:9 or 32:9 screen the game shows more of the world at the sides, as tall as
 on a 16:9 screen, and the enemies there move as smoothly as in the middle. The HUD, the menus and the hint
 videos keep their 16:9 shape in the middle of the screen, and so do the full-screen movies, with black beside them; the
-pause menu's blurred background and a cutscene's black bars cover the whole width. A 16:10 or 4:3 screen shows less at
+pause menu's blurred background and a cutscene's black bars cover the whole width, and so do the star wipe between
+screens and the loading screen, their star and title in the middle (beside the stage panel's picture its edge is drawn
+out to the screen's). A 16:10 or 4:3 screen shows less at
 the sides. There the HUD and menus fill the width, drawn a little narrower (up to v0.5.1 their right tenth was cut at
 16:10: the coin counter, the edge of the pause menu).
 **Graphics, Aspect ratio** chooses the shape, after a restart: your monitor's own (the default), the game's 16:9 (with

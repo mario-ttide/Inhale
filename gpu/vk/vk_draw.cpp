@@ -9465,17 +9465,29 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     {
         FINE_SCOPE(FT_DYN);
         // (inhale) this game's pause background, a capture of the whole picture, keeps the picture's width (kirby_wide.h),
-        // and so do its cutscene bars; a full-screen movie keeps its 16:9 shape
+        // and so do its cutscene bars; a full-screen movie keeps its 16:9 shape; a wipe's layer is drawn at 16:9, and a
+        // pane over the whole screen (a wipe's cover, a loading screen's fill) is drawn again for each side strip, a pane in
+        // one corner (a loading screen's blot) moved to the picture's
         static const float wide_ratio = host && host->aspect_ratio ? host->aspect_ratio() : 0.0f;
         float* const vp = s.viewport[0];
         const float vp_game[4] = {vp[0], vp[1], vp[2], vp[3]};
-        const auto pane = [&s](float out[4]) {
+        const int32_t sc_game[4] = {s.scissor[0], s.scissor[1], s.scissor[2], s.scissor[3]};
+        const auto consts = [&s](uint32_t from, float* out, uint32_t bytes) {
             const nvn_p_bind_buf& u = s.ubo[0][0];
-            return u.addr && (!u.size || u.size >= kirby_wide::kPaneAt + 16) && memory_read_as_submitted(u.addr + kirby_wide::kPaneAt, out, 16);
+            return u.addr && (!u.size || u.size >= from + bytes) && memory_read_as_submitted(u.addr + from, out, bytes);
         };
-        if (const float k = kirby_wide::viewport_scale(!menu_oot_rows(), wide_ratio, at, p.key, gfx_sampled(), pane); k != 1.0f) {
+        const kirby_wide::Plan wide = kirby_wide::plan(!menu_oot_rows(), wide_ratio, at, p, kirby_upscale::texture.load(std::memory_order_relaxed), gfx_sampled(),
+                                                       vp_game, sc_game, !d.mesh && !d.indirect && !d.occ_pool && at_pass == &at,
+                                                       (float)dev.props.limits.maxViewportDimensions[0], consts);
+        // (each strip a draw of its own, as the task batches above: the same state but the viewport and the scissor)
+        for (int i = 0; i < wide.strips; i++) {
+            std::memcpy(vp, wide.side[i].viewport, sizeof vp_game), std::memcpy(s.scissor, wide.side[i].scissor, sizeof sc_game);
+            kirby_wide::in_strip = true, draw(cmd, s, d), kirby_wide::in_strip = false;
+            std::memcpy(vp, vp_game, sizeof vp_game), std::memcpy(s.scissor, sc_game, sizeof sc_game);
+        }
+        if (const float k = wide.k; k != 1.0f || wide.dx != 0.0f) {
             if (vp[2] == 0.0f && vp[3] == 0.0f) vp[2] = (float)at.width, vp[3] = (float)at.height;
-            kirby_wide::widen(vp[0], vp[2], k);
+            kirby_wide::widen(vp[0], vp[2], k), vp[0] += wide.dx;
             // (black beside a narrowed movie, where Copy drew the scene target. In the pass, before the draw: nothing in
             // it samples this target, so the clear is ordered with Copy's write and the movie's as it must be)
             int32_t side[2][4];

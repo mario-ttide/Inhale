@@ -2242,7 +2242,8 @@ did not draw, a target not 16:9 left; the pane read only after the cheaper check
 Not checked: dialog boxes, door transitions, the map and the other screens that draw a capture (if one draws it as a
 pane over the whole layout it is widened as the pause's; a smaller pane of a capture stays narrowed and samples it at
 its 16:9 place), 4:3, and the HUD at the screen's edges (upstream's `hos_wide_ui.c`), not done. The opening movie and
-16:10 are in the next part.
+16:10 are in the next part; the wipes into and out of a stage, the loading screen and the stage panel in "the wipes,
+the loading screen and the stage panel" below.
 
 **2026-11-25, the cutscene bars and the movies.** The tester's next report at 5120 x 1440 (eight screenshots): menus
 and HUD good; a cutscene's black bars at the top and bottom cover only the middle 16:9, the scene showing beside them
@@ -2309,9 +2310,11 @@ beside it cleared to black`.
 
 Not checked: the other five files of `mov/EventMovie` and the bars of later cutscenes (the dialog with Elfilin and the
 world map's intro of the report: the rule takes any bar of that pane, but no run reached them); a strip of a menu as
-wide as the layout and at most 135 high, which the rule would widen with its picture stretched (none seen); the full
-pane behind the first start's dialogs, which still ends at the middle 16:9 with black beside it; the cost of reading a
-pane for each layout draw (the walks stayed at 60 presents a second); a real 21:9 or 32:9 screen.
+wide as the layout and at most 135 high, which the rule would widen with its picture stretched (one seen since, the
+stage's name on the loading screen: "the wipes, the loading screen and the stage panel" below); the full pane behind
+the first start's dialogs, which ended at the middle 16:9 with black beside it (a pane over the whole layout gets side
+strips since the part below; that screen was not run again); the cost of reading a pane for each layout draw (the
+walks stayed at 60 presents a second); a real 21:9 or 32:9 screen.
 
 **2026-11-25, 16:10: the HUD cut at the scene's width.** The defect the 1920 x 1200 run showed (issue #25): the right
 tenth of everything the layouts draw was missing.
@@ -2341,6 +2344,99 @@ each of three lines of the fix broken prints a line of that kind.
 Not checked: 16:10 or 4:3 with the game's steps on (`HOS_DYNAMIC_RES=1`: whether the depth target follows a lower
 level; all six levels are at least 2560 wide only while the steps are off), a first start's movie and bars at 16:10, a
 real 16:10 screen, a window (the runs are headless), a slow card with the 23% more pixels.
+
+**2026-11-25, the wipes, the loading screen and the stage panel.** The tester's video at 5120 x 1440 (world map,
+stage panel, Start, the stage, pause, Exit Stage): during each change of screen the parts beside the middle 16:9 went
+their own way. Beside the stage panel's picture the blurred world map; in the star wipe a band of the loading
+screen's olive half as wide as the middle, black beside it, and beside that the old or the new scene, uncovered; the
+loading screen itself with black sides.
+
+- **Measured** with the temporary log in `draw`, extended: each draw into a 16:9 colour target with its program, pane,
+  textures, blend, stencil, the first 64 floats of its vertex constants, the fragment stage's, and what the program's
+  vertex stage reads of each constant buffer (`work/runs/w26/vk_draw_probe4.patch`; not kept). The walk
+  (`work/runs/w26/walk.sh`: title, the town's star to the world map, the stage's panel, Start, pause, Exit Stage, Exit,
+  with a copy of `work/user`) was found by steering a run with `HOS_INPUT_LIVE` from its shots; logs `s1.txt` (every
+  30th frame), `s3.txt` (every 10th over both wipes), `s5.txt` (every program).
+  - **The layer narrowed twice.** A wipe draws its layer, the loading screen or the rays, into a target of its own,
+    2560 x 1440, with the narrowed layout cameras (`5cfce03bc8b25357` and others, m11 / m00 3.556), so the layer
+    covers the middle half of that target. A pane over the whole layout then shows the target in the window texture
+    through the star's mask (a 1080 x 1080 texture in the same draw: `f188a9d1...` into a stage, `9da2fa98...` out of
+    one), under a narrowed camera again.
+  - **The covers.** The loading screen's fill is a pane of 1920 x 1080 at -960, 540 by `5cfce03bc8b25357` with an 8 x 8
+    texture and no blend, its colour in the fragment constants; out of a stage the cover is `b96bfac9...`, the same
+    pane, a fill with the star's hole cut by the mask. While the loading screen stands, nothing is drawn beside the
+    middle: no Copy of the scene, so the sides were black. Its two blots are 900 x 500 panes (`17c677b41ed0780c`,
+    `861ed5b8637cdcd9`) moved into the top left and the bottom right corner.
+  - **The stage panel.** Its picture is not the scene: panes over the whole layout with 1920 x 1080 pictures the game
+    uploaded (`1a89a565...`, `5cfce03bc8b25357`, and `96eec856...` as a 480 x 270 pane scaled by 4), drawn over the
+    blurred capture of the world map, which the rule of 2026-11-23 widens. Kirby on the star is drawn over them as
+    models.
+  - **The stage's name was stretched.** On the loading screen it is a pane of 1920 x 120 (`36da1a91054fc5e9`, text the
+    GPU drew into a texture): the shape of a cutscene's bar, so the bars' rule widened it to twice its width, over its
+    own shadow. Seen in the shots of the walk before this change.
+  - **A layout's program** is told by what its vertex stage reads: its constants up to the pane, 560 bytes or more
+    (`Shader::Info::constant_buffer_used_sizes[3]`). Copy, the blurs and the movie's program read none and draw with
+    the last layout's still bound; the pause menu's 2398 x 1478 "panes" of the earlier parts by `6f82d471...` and
+    `61c3d0c6...` are such draws, the pane the last layout's.
+- **The rules** (`gpu/vk/kirby_wide.h` `plan`, the same block of `draw`), for a layout's program under a narrowed
+  camera, while this game runs on a picture wider than 16:9:
+  - **A layer at 16:9.** A draw into a 16:9 target that is not the window texture (not of the last present's size,
+    which `kirby_upscale.h` already notes) is widened by the ratio over 16:9 about its centre. The layer then holds the
+    screen as at 16:9, and the pane that shows it puts it in the middle.
+  - **Side strips.** A pane that ends in all four corners of the screen (its sides on the layout's sides and its top
+    or bottom on the layout's, within 4 units, not turned: the pane over the whole layout) is drawn again for each
+    side, before the draw itself: `draw` calls itself with the strip as the scissor and a viewport as wide
+    as the device allows (`maxViewportDimensions`, 16384 here), placed so that the pane's outer edge is on the
+    picture's edge. The strip then shows the pane's outer slice stretched over it: 100 of the middle's 1280 columns at
+    5120 x 1440, 51 of 1905 at 3440 x 1440. A flat fill is the same colour; the star's hole keeps its shape in the
+    middle. Strips and middle share no pixel, so blend and the order with the other draws are the game's. Not for a
+    mesh, indirect or query draw or with a copy of the target open; a nested draw applies no rule. With a limit under
+    twice the viewport a pane over the whole layout is widened instead.
+  - **A pane in one corner is moved.** The loading screen's blots end on one side of the layout. A strip showed the
+    blot's outer slice down the whole side: a darker band with a seam at the middle's edge, seen on a 32:9 picture
+    in a window (the first form of this change did that). The draw's viewport is moved aside instead, by half of
+    what the narrowing leaves (1280 x (1 - 16:9 over the ratio) pixels of 2560), its width the game's: the blot is
+    in the picture's corner with its own shape, over the fill's strip. No second draw, so the device's limit and the
+    kind of draw do not matter. In a wipe's layer the blot would end at the layer's side and the cover's strips would
+    smear it, so there its viewport is put off the target: the blots come when the wipe is over.
+  - **A bar samples nothing the GPU drew**: the stage's name has its shape again.
+- **Rejected.** Widening a cover whole (the star and the stage's picture twice as wide). Clearing the strips with the
+  fill's colour (it ignores blend, so a cover that fades would pop, and it needs the colour's place in the
+  constants). A strip for every pane that touches a side of the layout: a button that slides in over the edge and the
+  pause menu's glow touch it too (`work/runs/w26/edge.py` lists them), and would smear across the strip.
+- **Known weakness.** A shape inside the slice is smeared along the strip: the star at its largest and the rays for a
+  few frames of a wipe, the edge of the stage panel's picture for as long as the panel is open (buildings and sky as
+  horizontal bands), and at the seam the strip shows what is 100 columns further in.
+- **Runs** (`work/runs/w26/`, RX 7900 XTX, the shots looked at; `b*` the tree before the change, `f*` with it):
+
+| run | picture | seen |
+|---|---|---|
+| `b5120` | 5120 x 1440 | as the video. In the 14 shots (one in 30) with the cover over the middle, no column beside it is the cover's olive |
+| `f5120` | 5120 x 1440 | the cover and the loading screen from edge to edge (88 to 100% of the sides olive in those shots), the star's hole round in the middle, no band, no scene beside a cover, the blots drawn out to the edges (a seam at the middle's edge; `g5120`, with the blots moved instead: in the picture's corners, the sides flat olive), the stage's name at its own width; beside the stage panel's picture its edge drawn out, no blurred map |
+| `f3440` | 3440 x 1440 | the same (76 to 100% of the sides); `g3440` as `g5120` |
+| `f4k` against `b4k` | 3840 x 2160 | 167 of 167 frames, 15 over 4, the largest 23.1, each in a change of screen. Two runs of one build (`a4k`, `a4k2`) differ in the same frames: 21 over 4, the largest 23.6 |
+| `f1610` against `b1610` | 1920 x 1200 | 165 of 167 frames, 21 over 4, the largest 39.8 at present 4140: the wipe out of the stage is a few presents ahead in `f1610` (`cmp1610.png`); `a1610`, an earlier run with the change, against `b1610`: the largest 23.4 |
+| `fS5` against `bS5` | 5120 x 1440, S5's walk and a pause | 33 of 33 frames, the largest 3.6: title, HUD, pause menu and its blur as before |
+
+  Each run ended with no error line. The walks are 85 s with shots at 1280 x 360 (1720 x 720 at 3440 x 1440).
+
+Tests: `tests/test_kirby_wide_keep.py`, the block and the header at 32:9, 21:9, 16:9, 16:10 and 4:3, with the draws
+measured: the loading screen's fill, both covers and the stage's picture get two nested draws whose scissors are the
+strips to the pixel, the pane's outer edge on the picture's edge, the draw itself with the game's viewport and scissor;
+a blot moved whole to the picture's corner with no strip (also with a limit of 4096) and put off the target in a layer;
+a layer's draws widened; the stage's name left; and left: a mesh, indirect or query
+draw, a copy of the target open, a pane larger than the layout, a button over the edge, a turned pane, a program that
+reads no layout constants, a camera not narrowed, the window texture taken for a layer, the other game. Before the fix
+it printed `32:9: FAIL: the loading screen's fill: two draws of its own, one a side strip`, `FAIL: a layer's draw (a
+ray, 22 x 512): its viewport wider by the ratio over 16:9 about its centre`, `FAIL: the stage's name, a pane of a bar's
+shape with text the GPU drew: left` and six more, the same at 21:9 (`work/runs/w26/test_before.txt`). Ten lines of the
+fix broken one at a time each print a `FAIL:`.
+
+Not checked: a real 21:9 or 32:9 screen; the wipes of the other worlds, of doors and of a boss (the same rules if they
+are made the same way; their layers may use programs and panes not seen here); a device with a viewport limit under
+5120 (the widening instead of strips is tested, not seen); the handheld profile; the dialog over the pause menu, whose
+blurred capture holds the menu stretched to the picture's width (as before this change); whether a pane in a corner
+of some other screen now gets a strip it should not (none in this walk: title, town, world map, stage, pause).
 
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
