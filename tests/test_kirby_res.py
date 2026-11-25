@@ -1,5 +1,5 @@
 """Game-free test of host/kirby_res.c: the dynamic resolution's six docked frame sizes in basil/ScnCommon.bin, scaled to a
-16:9 output between 2560 x 1440 and 3840 x 2160 as the file is read, and left alone for another output, another file, a
+16:9 output between 2560 x 1440 and 5120 x 2880 as the file is read, and left alone for another output, another file, a
 read that does not hold the whole table, or a table that is not the one known. The fixed size, every level the first
 one's, and kirby_read_done's choice of it: fixed unless HOS_DYNAMIC_RES is set to a number that is not 0 (the game's
 steps are off by default), and never in the handheld profile, which keeps the file as read. There HOS_SCENE_HEIGHT=<lines>
@@ -86,8 +86,12 @@ int main(void) {
     /* 3200 x 1800 */
     fresh();
     assert(kirby_scn_patch(path, 0, file, sizeof file, 3200, 1800, 0, 0) == 1 && at(1) == 3200 && at(2) == 1800 && at(16) == 1066);
-    /* the game's 2560 x 1440, a smaller one, 21:9, 16:10, larger than 3840 x 2160, the game's own 2048 x 1152 (0 x 0): left */
-    const uint32_t keep[][2] = {{2560, 1440}, {1920, 1080}, {3440, 1440}, {3840, 2400}, {5120, 2880}, {0, 0}};
+    /* 5120 x 2880, the largest: x2 */
+    fresh();
+    assert(kirby_scn_patch(path, 0, file, sizeof file, 5120, 2880, 0, 0) == 1 && at(1) == 5120 && at(2) == 2880 && at(4) == 4480 &&
+           at(16) == 1708 && at(17) == 960);
+    /* the game's 2560 x 1440, a smaller one, 21:9, 16:10, larger than 5120 x 2880, the game's own 2048 x 1152 (0 x 0): left */
+    const uint32_t keep[][2] = {{2560, 1440}, {1920, 1080}, {3440, 1440}, {3840, 2400}, {7680, 4320}, {0, 0}};
     for (unsigned i = 0; i < sizeof keep / sizeof *keep; i++) {
         fresh();
         assert(kirby_scn_patch(path, 0, file, sizeof file, keep[i][0], keep[i][1], 0, 0) == 0 && same());

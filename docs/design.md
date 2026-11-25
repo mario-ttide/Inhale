@@ -2727,3 +2727,30 @@ Not checked: the footer on a screen (a windowed run with the counter on Dev); a 
 (`HOS_DYNAMIC_RES=1` at 2560 x 1440 never stepped on this GPU: the header's case only); a card that leaves the network
 out by itself; Windows; NVIDIA. Known and left: the title screen, the town and the world map show a resolution too
 (4030 records in 4500 presents), since the scene is drawn there, and so will a movie's Copy.
+
+### 2026-11-25: the scene at 5120 x 2880
+
+With a 5120 x 2880 output the scene stayed at 2560 x 1440: `kirby_scn_patch` scaled the six sizes only for a 16:9
+output up to 3840 wide, the largest of the game's own size table (`main+0x9aaa70`). The limit is now 5120 wide, the
+largest 16:9 output `hos_output_parse` takes. The game makes its scene targets at 5120 x 2880 and draws there; the
+window texture stays 3840 x 2160 and the window shows 2560 x 1440 of it, as at every docked output ("the footer's
+render lines"), so Copy halves the scene into that part: each pixel of the part is four of the scene's, which is the
+only smoothing of edges this game has here (no anti-aliasing runs: section 9, "what a DLAA-class anti-aliasing would
+have to work with"). The present then stretches the part to the output.
+
+| run (RX 7900 XTX, headless, 75 s to the first stage; `work/runs/fr/`) | scene | presents a second | GPU time a frame |
+|---|---|---|---|
+| 3840 x 2160 (`f4k`) | 3840 x 2160 | 59.8 | 4.5 ms |
+| 5120 x 2880 (`c5k`) | 5120 x 2880 | 59.8 | 6.3 ms |
+| 5120 x 2880, `HOS_DYNAMIC_RES=1` (`c5kdyn`) | 5120 x 2880 (the pass of `5be22000a0782116`), no step seen | 59.8 | 6.3 ms |
+
+The shot in the first stage (`c5k/vk_004200.png`) shows the stage whole, the HUD in its place. Test:
+`tests/test_kirby_res.py` (5120 x 2880 scaled by two; 7680 x 4320 left). Not checked: a 5120 x 2880 screen or window
+(the runs are headless), a slower GPU, VRAM use, Windows, NVIDIA, a whole stage or a boss. The limit of a picture of
+another shape (3840 x 2160's pixels, `kirby_scn_shape`) is as it was.
+
+A 7680 x 4320 scene does not work: tried with a switch made for the run (the scene's size given by hand, a 3840 x 2160
+output; `c8k`). The game makes the targets and the scene's passes run at 7680 x 4320 (9.2 ms of GPU time a frame, 41
+to 59 presents a second, VRAM 3.0 GB), but the picture in the first stage is black under the HUD
+(`c8k/vk_003900.png`). Why was not looked into. An output above 5120 x 2880's pixels is refused before that
+(`hos_output_parse`). Three for one is also not what Copy's linear filter averages: it reads four of each nine pixels.

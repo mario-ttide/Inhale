@@ -136,7 +136,7 @@ the sides. There the HUD and menus fill the width, drawn a little narrower (up t
 bars at the sides), or another your screen has. **Output resolution** then lists that shape's sizes, such as
 3440 x 1440 or 5120 x 1440. The environment variable `HOS_ASPECT` sets a ratio, such as `HOS_ASPECT=2.3889`.
 
-**Resolution.** The 3D scene is drawn at your screen's size up to 3840 x 2160 (a 16:9 screen wider than 2560 x 1440),
+**Resolution.** The 3D scene is drawn at your screen's size up to 5120 x 2880 (a 16:9 screen wider than 2560 x 1440),
 and at 2560 x 1440 on any other 16:9 screen. On a screen of another shape it takes that shape, at least 1440 lines high
 and 2560 wide, and up to the pixels of 3840 x 2160: 3440 x 1440 on a 3440 x 1440 screen, 5120 x 1440 on a 5120 x 1440
 one, 2560 x 1600 on a 1920 x 1200 one. The

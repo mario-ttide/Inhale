@@ -7,8 +7,9 @@
    drew at 2560 x 1440 at most.
 
    As the file is read, the six sizes are scaled by the output's width over 2560 where the output is 16:9 and between
-   2560 x 1440 and 3840 x 2160 (the largest of the game's own size table, main+0x9aaa70): at 3840 x 2160 they become
-   3840 x 2160 down to 1280 x 720. A picture of another shape (21:9, 32:9, 16:10: host/kirby_wide.c gives the cameras its
+   2560 x 1440 and 5120 x 2880 (the largest 16:9 output there is, nn_applet.c hos_output_parse; the game's own size table,
+   main+0x9aaa70, ends at 3840 x 2160, and the game draws a 5120 x 2880 scene all the same: docs/design.md, "the scene at
+   5120 x 2880"): at 3840 x 2160 they become 3840 x 2160 down to 1280 x 720. A picture of another shape (21:9, 32:9, 16:10: host/kirby_wide.c gives the cameras its
    ratio) takes the picture's shape, at least 1440 lines high and at most 3840 x 2160's pixels: 3440 x 1440 for a 3440 x
    1440 output, 5120 x 1440 for 5120 x 1440, 4434 x 1870 for 5120 x 2160 (docs/design.md, "issue #20"), and at least
    2560 wide: 2560 x 1600 for 1920 x 1200 (kirby_scn_shape). Another output keeps the game's sizes.
@@ -79,7 +80,7 @@ int kirby_scn_patch(const char *guest, int64_t off, uint8_t *buf, uint64_t n, ui
     if (at < 0) return 0;
     uint32_t v[KIRBY_SCN_LEVELS * 3];
     memcpy(v, buf + at, sizeof v);
-    const int bigger = shaped ? out_w && out_h : (uint64_t)out_w * 9 == (uint64_t)out_h * 16 && out_w > 2560 && out_w <= 3840;
+    const int bigger = shaped ? out_w && out_h : (uint64_t)out_w * 9 == (uint64_t)out_h * 16 && out_w > 2560 && out_w <= 5120;
     if (!bigger && !fixed) return 0;
     for (int k = 0; k < KIRBY_SCN_LEVELS; k++) {
         const int from = fixed ? 0 : k;
