@@ -279,7 +279,8 @@ Code parse_code(const uint8_t* ctl, const std::vector<uint8_t>& area, uint64_t k
             outside = i;
             break;
         }
-        if (r == Shader::Ampere::ProgramCaptureState::Result::Complete) break;
+        // (inhale) a geometry stage whole: its at-exit handler is after the EXIT, and the lowering looks at it (geometry_inhale.h)
+        if (r == Shader::Ampere::ProgramCaptureState::Result::Complete && st != 2) break;
     }
     {   // (longshot, for bisecting a bad translation) RX_VK_REJECT_STAGES=<n,...> (NVN stages) and RX_VK_REJECT_KEYS=
         // <hex prefix,...>: those programs are taken as untranslatable, as a lowering failure leaves them
@@ -1179,13 +1180,15 @@ const Shader::ProgramHeader& header_of(const Code& c) {
 void written_types(const Code* fs, const uint8_t color_types[8], uint8_t out[8]) {
     for (int i = 0; i < 8; i++) out[i] = fs && header_of(*fs).ps.HasOutputComponents(i) ? color_types[i] : 0;
 }
+#include "geometry_stage_inhale.h"   // (inhale) the geometry stage, which upstream leaves out
 /// A vertex and fragment program's key: their code, and the vertex input and colour output types that change what they translate to
 /// (longshot) Whether this fragment stage's program is to have PsychoV35 for its scene tone map (scene_tonemap_pass.h): a scene
 /// mapping program while the Tone mapper row asks for it. Its own key, so the row's change translates only these programs
 bool scene_tonemap_for(const Code* fs) { return fs && fs->scene_fit && scene_tonemap_on(); }
 uint64_t graphics_key(const Code& vs, const Code* fs, const uint32_t vattr[16], const uint8_t color_types[8],
-                      bool tonemap = false) {
+                      bool tonemap = false, const Code* gs = nullptr) {
     uint64_t key = vs.key ^ (fs ? fs->key * 31 : 0);
+    key = geometry_key(key, gs);   // (inhale) a geometry stage: geometry_stage_inhale.h
     if (tonemap) key = hash_bytes("psychov35", 9, key);
     for (int i = 0; i < 16; i++) {
         const auto used = header_of(vs).vtg.InputGeneric((size_t)i);
@@ -1499,7 +1502,7 @@ uint64_t translator_stamp() {
 namespace {
 
 void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* fsc, const Code* csc,
-                    const uint8_t color_types[8]) {
+                    const uint8_t color_types[8], const Code* gsc = nullptr) {
     const auto t0 = std::chrono::steady_clock::now();
     QuestionsNoted noted{p};
     ptr_diag_reset();
@@ -1643,6 +1646,8 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
                 }
                 frt.scaled_noperspective_inputs = vrt.noperspective_outputs.any();
             }
+            GeometryStage gs = geometry_translate(s, gsc, vs->program, vrt);   // (inhale)
+            questions += gs.questions;
             Stage v;
             v.nvn_stage = 0;
             const std::vector<uint32_t> vspirv = Shader::Backend::SPIRV::EmitSPIRV(profile_graphics(VK_SHADER_STAGE_VERTEX_BIT), vrt, vs->program, bindings);
@@ -1662,8 +1667,9 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
             v.vk_stage = VK_SHADER_STAGE_VERTEX_BIT;
             v.c1 = vsc->c1;
             p.stages.push_back(std::move(v));
+            if (gs) geometry_emit(gs, p, *gsc, bindings, kept);   // (inhale)
             if (fs) {
-                frt.previous_stage_stores = vs->program.info.stores;
+                frt.previous_stage_stores = gs ? gs.t->program.info.stores : vs->program.info.stores;   // (inhale) the stage before it
                 for (int i = 0; i < 8; i++) frt.color_output_types[i] = static_cast<Shader::AttributeType>(color_types[i]);
                 if (p.scene_tonemap) {   // (the HDR tone mapper row: PsychoV35; before the NaN guard, which then guards it)
                     const char* why = Shader::Optimization::SceneToneMapPass(fs->program);
@@ -2224,16 +2230,17 @@ const Program* program_pick(const NvnState& s, ProgramKind kind, const uint8_t c
     for (const auto& c : cs)
         if (!c->header_only) stage_code[c->stage] = c;
     if (compute ? !stage_code[5] : !stage_code[0]) return nullptr;
-    if (!compute && (stage_code[2] || stage_code[3] || stage_code[4])) {   // (geometry/tessellation: not translated)
+    const Code* const gsc = compute ? nullptr : geometry_code(stage_code[2].get());   // (inhale) the geometry stage is translated
+    if (!compute && ((stage_code[2] && !gsc) || stage_code[3] || stage_code[4])) {   // (geometry/tessellation: not translated)
         static int logged;
         if (logged++ < 40) log_program_stages(s, "dropped stages");
     }
     // the variants of these stages, for these vertex input types and colour output types
     const bool tonemap = !compute && scene_tonemap_for(stage_code[1].get());
-    const uint64_t key = compute ? stage_code[5]->key : graphics_key(*stage_code[0], stage_code[1].get(), s.vattr, color_types, tonemap);
+    const uint64_t key = compute ? stage_code[5]->key : graphics_key(*stage_code[0], stage_code[1].get(), s.vattr, color_types, tonemap, gsc);
     auto& variants = programs[key];
     program_cache_load(key, variants);
-    const uint64_t codes[4] = {stage_code[compute ? 5 : 0]->key, !compute && stage_code[1] ? stage_code[1]->key : 0, 0, 0};
+    const uint64_t codes[4] = {stage_code[compute ? 5 : 0]->key, !compute && stage_code[1] ? stage_code[1]->key : 0, gsc ? gsc->key : 0, 0};   // (inhale) [2]: the geometry stage
     for (auto& p : variants)
         if (!p->codes[0]) std::memcpy(p->codes, codes, sizeof codes);
     for (auto& p : variants) {
@@ -2253,22 +2260,23 @@ const Program* program_pick(const NvnState& s, ProgramKind kind, const uint8_t c
     static const bool sync = env_on("RX_VK_SYNC_SHADERS");
     if (compute || sync) {   // (compute: dispatches are never left out, so they are translated where they are)
         const auto t0 = std::chrono::steady_clock::now();
-        translate_into(*raw, s, stage_code[0].get(), stage_code[1].get(), compute ? stage_code[5].get() : nullptr, color_types);
+        translate_into(*raw, s, stage_code[0].get(), stage_code[1].get(), compute ? stage_code[5].get() : nullptr, color_types, gsc);
         st_translate_wait_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
         return raw->failed ? nullptr : raw;
     }
     struct Job {
         Program* p;
         NvnState s;
-        SharedCode vs, fs;
+        SharedCode vs, fs, gs;
         uint8_t ct[8];
     };
     auto job = std::make_shared<Job>();
     job->p = raw, job->s = s;
     job->vs = std::move(stage_code[0]);
     job->fs = std::move(stage_code[1]);
+    if (gsc) job->gs = std::move(stage_code[2]);   // (inhale)
     std::memcpy(job->ct, color_types, 8);
-    jobs_push([job] { translate_into(*job->p, job->s, job->vs.get(), job->fs.get(), nullptr, job->ct); }, false,
+    jobs_push([job] { translate_into(*job->p, job->s, job->vs.get(), job->fs.get(), nullptr, job->ct, job->gs.get()); }, false,
               &raw->ready, [job]() noexcept {
                   job->p->failed = true;
                   job->p->ready.store(true, std::memory_order_release);
@@ -2454,7 +2462,7 @@ std::unique_ptr<Program> seed_translate(const SeedStage* const by_stage[8], cons
     const Code* fs_head = by_stage[1] ? &head[1] : nullptr;
     const uint64_t key = by_stage[5] ? by_stage[5]->key
                          : by_stage[7] ? mesh_key(by_stage[6] ? &head[6] : nullptr, head[7], fs_head, nullptr, color_types)
-                                       : graphics_key(head[0], fs_head, attributes, color_types);
+                                       : graphics_key(head[0], fs_head, attributes, color_types, false, geometry_code(by_stage[2] ? &head[2] : nullptr));   // (inhale)
     if (key_out) *key_out = key;
     bool have;
     {
@@ -2485,7 +2493,7 @@ std::unique_ptr<Program> seed_translate(const SeedStage* const by_stage[8], cons
         translate_into(*p, *blank, nullptr, nullptr, &code[5], color_types);
         seed_cs_control = nullptr;
     } else
-        translate_into(*p, *blank, &code[0], by_stage[1] ? &code[1] : nullptr, nullptr, color_types);
+        translate_into(*p, *blank, &code[0], by_stage[1] ? &code[1] : nullptr, nullptr, color_types, geometry_code(by_stage[2] ? &code[2] : nullptr));   // (inhale)
     return p;
 }
 
@@ -2628,7 +2636,7 @@ std::unique_ptr<Program> seed_program_of(const uint64_t code[3], bool mesh, cons
                                          uint64_t* key_out) {
     *key_out = 0;
     const SeedStage* by_stage[8]{};
-    const int want[3] = {mesh ? 7 : 0, 1, mesh ? 6 : -1};
+    const int want[3] = {mesh ? 7 : 0, 1, mesh ? 6 : 2};   // (inhale) a graphics program's third: its geometry stage
     for (int k = 0; k < 3; k++) {
         if (!code[k]) continue;
         const auto it = seed.index.find(code[k]);
@@ -2645,7 +2653,7 @@ std::unique_ptr<Program> seed_program_of(const uint64_t code[3], bool mesh, cons
 static const Program* seed_variant_made(const uint64_t code[3], bool mesh, const uint32_t attributes[16], const uint8_t color_types[8],
                                         const std::vector<uint8_t>* questions, const std::vector<Program::Answer>* answers) {
     const SeedStage* by_stage[8]{};
-    const int want[3] = {mesh ? 7 : 0, 1, mesh ? 6 : -1};
+    const int want[3] = {mesh ? 7 : 0, 1, mesh ? 6 : 2};   // (inhale) a graphics program's third: its geometry stage
     for (int k = 0; k < 3; k++) {
         if (!code[k]) continue;
         const auto it = seed.index.find(code[k]);
@@ -2668,7 +2676,7 @@ static const Program* seed_variant_made(const uint64_t code[3], bool mesh, const
     auto p = std::make_unique<Program>();
     p->scene_tonemap = !mesh && scene_tonemap_for(fs);
     p->key = mesh ? mesh_key(by_stage[6] ? &code_of[6] : nullptr, code_of[7], fs, nullptr, color_types)
-                  : graphics_key(code_of[0], fs, attributes, color_types, p->scene_tonemap);
+                  : graphics_key(code_of[0], fs, attributes, color_types, p->scene_tonemap, geometry_code(by_stage[2] ? &code_of[2] : nullptr));   // (inhale)
     if (mesh && !dev.mesh_shader && !dev.mesh_fallback) return nullptr;
     p->fallback = mesh && dev.uses_mesh_fallback(by_stage[6] != nullptr);
     p->mesh = mesh && !p->fallback;
@@ -2676,7 +2684,7 @@ static const Program* seed_variant_made(const uint64_t code[3], bool mesh, const
     if (questions) questions_in = questions, questions_at = 0, answers_in = answers;
     struct Reset { ~Reset() { questions_in = nullptr, answers_in = nullptr; } } reset;
     if (mesh) translate_mesh_into(*p, *blank, by_stage[6] ? &code_of[6] : nullptr, code_of[7], nullptr, fs, color_types);
-    else translate_into(*p, *blank, &code_of[0], fs, nullptr, color_types);
+    else translate_into(*p, *blank, &code_of[0], fs, nullptr, color_types, geometry_code(by_stage[2] ? &code_of[2] : nullptr));   // (inhale)
     if (p->failed) {
         for (Stage& st : p->stages)
             if (st.module) vkDestroyShaderModule(dev.device, st.module, nullptr);
@@ -2811,6 +2819,7 @@ Code read_code_head(const nvn_stage_data& sd) {
 }
 struct CreatedStages {
     const Code *vs = nullptr, *fs = nullptr, *task = nullptr, *mesh = nullptr, *prim = nullptr, *compute = nullptr;
+    const Code* gs = nullptr;   // (inhale) the geometry stage
 };
 CreatedStages created_stages(const std::vector<Code>& cs) {
     CreatedStages o;
@@ -2818,6 +2827,7 @@ CreatedStages created_stages(const std::vector<Code>& cs) {
         if (c.header_only) o.prim = &c;
         else if (c.stage == 0) o.vs = &c;
         else if (c.stage == 1) o.fs = &c;
+        else if (c.stage == 2) o.gs = geometry_code(&c);   // (inhale)
         else if (c.stage == 5) o.compute = &c;
         else if (c.stage == 6) o.task = &c;
         else if (c.stage == 7) o.mesh = &c;
@@ -2842,6 +2852,7 @@ CreatedProgram program_created_read(const nvn_prog& prog) {
         out.codes[2] = st.task ? st.task->key : 0, out.codes[3] = st.prim ? st.prim->key : 0;
     } else if (st.vs) {
         out.codes[0] = st.vs->key, out.codes[1] = st.fs ? st.fs->key : 0;
+        out.codes[2] = st.gs ? st.gs->key : 0;   // (inhale)
     } else {
         return out;
     }
@@ -2859,7 +2870,7 @@ uint64_t program_created_key(uint64_t serial, const uint32_t vattr[16], const ui
     if (st.mesh) return mesh_key(st.task, *st.mesh, st.fs, st.prim, color_types);
     if (!st.vs) return 0;
     const bool tonemap = scene_tonemap_for(st.fs);
-    return graphics_key(*st.vs, st.fs, vattr, color_types, tonemap);
+    return graphics_key(*st.vs, st.fs, vattr, color_types, tonemap, st.gs);   // (inhale) st.gs
 }
 void program_created_forget(uint64_t serial) {
     std::lock_guard lk(created_mu);

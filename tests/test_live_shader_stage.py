@@ -62,11 +62,12 @@ void jobs_push(std::function<void()> work, bool, std::atomic<bool>*, std::functi
     pending = std::move(work);
 }
 int translated = -1;
-void translate_into(Program&, const NvnState&, const Code* vertex, const Code*, const Code*, const uint8_t*) {
+void translate_into(Program&, const NvnState&, const Code* vertex, const Code*, const Code*, const uint8_t*, const Code*) {
     translated = vertex->source_byte;
 }
 void defer_graphics(const NvnState& s, Program* raw) {
     uint8_t color_types[8]{};
+    const Code* const gsc = nullptr;   // (no geometry stage: tests/test_geometry_stage_key_inhale.py has one)
     @STAGE_ARRAY@
     stage_code[0] = @VERTEX@;
     @QUEUE_JOB@

@@ -53,7 +53,8 @@ struct SeedStage { uint32_t stage = 0; };
 struct { std::unordered_map<uint64_t, uint32_t> index; std::vector<SeedStage> stages; } seed;
 Code stage_of_seed(const SeedStage&) { return {}; }
 uint64_t mesh_key(const Code*, const Code&, const Code*, const Code*, const uint8_t*) { return 71; }
-uint64_t graphics_key(const Code&, const Code*, const uint32_t*, const uint8_t*, bool) { return 31; }
+uint64_t graphics_key(const Code&, const Code*, const uint32_t*, const uint8_t*, bool, const Code*) { return 31; }
+const Code* geometry_code(const Code* gs) { return gs; }   // ((inhale) geometry_stage_inhale.h)
 bool scene_tonemap_for(const Code*) { return false; }
 thread_local const std::vector<uint8_t>* questions_in = nullptr;
 thread_local size_t questions_at = 0;
@@ -79,7 +80,7 @@ void synthetic_translation(Program& p, const NvnState& s, unsigned modules) {
     p.failed = translation_fails;
     p.ready = true;
 }
-void translate_into(Program& p, const NvnState& s, const Code*, const Code*, const Code*, const uint8_t*) {
+void translate_into(Program& p, const NvnState& s, const Code*, const Code*, const Code*, const uint8_t*, const Code*) {
     ++graphics_calls;
     synthetic_translation(p, s, 1);
 }

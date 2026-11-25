@@ -3227,6 +3227,14 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
     HT_SCOPE("build_graphics (pipeline)");
 #endif
     if (at.n < 0 || at.n > 8 || program_modules_dropped(p)) return VK_NULL_HANDLE;   // (longshot: at most 8 colour targets)
+    // (inhale) a geometry stage is translated for triangles (geometry_stage_inhale.h): its draw of another primitive is left out
+    if (topo != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST && topo != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP && topo != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN)
+        for (const Stage& st : p.stages)
+            if (st.vk_stage == VK_SHADER_STAGE_GEOMETRY_BIT) {
+                static std::atomic<int> told{0};
+                if (told++ < 8) logf("vk: program %016llx has a geometry stage and is drawn with topology %d: left out", (unsigned long long)p.key, (int)topo);
+                return VK_NULL_HANDLE;
+            }
     const Shader::Info& vs = *vertex_info(p);
     const auto t0 = std::chrono::steady_clock::now();
     std::vector<VkPipelineShaderStageCreateInfo> stages;

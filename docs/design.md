@@ -194,6 +194,9 @@ also name its method for rule 1 (its measure skill), which is not carried here.
 
 ## 7. Not verified yet
 
+- The geometry stage (section 9, "issue #27, mouthful forms drawn wrong") beyond Scissor-Lift Mouth and Ring Mouth on
+  the RX 7900 XTX: the other four forms, the add-on's meteor areas, NVIDIA, Intel, Windows. No shot of the build
+  before the change was taken on this PC: the "before" pictures are the issue's.
 - The 3D frame at the output size (section 9, "issue #1, dynamic resolution") on a 4K screen, in a window or full
   screen, and at an output between 2560 x 1440 and 3840 x 2160. NVIDIA and Windows were checked headless only, with the
   size in the ini as the menu saves it ("The menu's 4K" in that section).
@@ -1085,7 +1088,9 @@ walk (beach to jungle), `RX_VK_FRAME_TRACE=1`, presents 900 to 4860 (the stage).
 - The preparation on the first start: 54264 programs translated in 28.5-30 s on 12 workers, then the shipped list's
   pipelines (9684 and 9732) built into the pipeline cache in 2.9-3.2 s on 16 threads. 262 programs do not translate:
   30 are a network left out on this card, and 232 use an NVN stage 2 (slot 32) that does not lower ("unsupported native
-  opcode"). Play never drew one of them (no such key in either list).
+  opcode"). Play never drew one of them (no such key in either list). That was true of this walk only: they are the
+  geometry stage's programs, which six mouthful forms draw (section 9, "issue #27"), and all 231 of them translate
+  now (the 232nd is a fragment stage that fails for another reason).
 - With the user's list only, the zone change still compiled: 145 pipelines in one frame, 100 ms (present 1426). 435 of
   the 875 pipelines the walk used were not in that list. For 419 of them a record of the same stages was there, with
   another blend state (316) or vertex strides (252), so another route or other settings add pipelines that a list does
@@ -2862,3 +2867,97 @@ draws. Test: `tests/test_kirby_res.py` (5120 x 2160 and 6256 x 1760 kept, 7680 x
 checked: a screen or window of these shapes (the runs are headless, the shape from `HOS_ASPECT`), a 5120 x 2160
 output of its own shape, a picture over the limit (`HOS_WIDE_MAX_PX`), a slower GPU, VRAM use, Windows, NVIDIA, a
 whole stage or a boss.
+
+### 2026-11-25: issue #27, mouthful forms drawn wrong: the geometry stage
+
+Issue #27 shows Scissor-Lift Mouth and Ring Mouth with a tiny, misplaced face, a pale flat body and the ring's inside
+a flat disc. The cause was found from the game's data and the renderer's code; both forms were then played to by hand
+and are drawn right ("Checked").
+
+**The cause.** A program may have a geometry stage (NVN stage 2) between its vertex and fragment stages. The lowering
+had no such stage: each of these codes stopped at its first instruction ("unsupported native opcode", op `0x34e`), the
+stage was then not among the program's stages, and the program was keyed, translated and drawn by its vertex and
+fragment stages alone. (`program_pick`'s "dropped stages" line was never printed for them: it needs a stage that lowers.)
+Upstream has no geometry stage either (looked at `v3.2.0`).
+
+**Where the game has it.** 819 programs, 77 distinct, with 22 geometry stages of 15 codes (112 to 216 instructions):
+
+| file (`gfx/`) | programs with the stage |
+|---|---|
+| `Actor/Chara/Kirby/DeformKirby/Ring`, `RingClock`, `RingGear`, `Elevator` (the scissor lift) | 26 each |
+| `Actor/Chara/Kirby/DeformKirby/Glider`, `DumpCar` | 13 each |
+| `Step/Decor/Map/Dlc*/**/MeteorArea` (52 files), `Step/Decor/Motif/Meteor/HoudiniLand` | 13 each |
+
+No other form's model has it (Car, Cone, Vending Machine, Stairs and the rest), which fits "some of the
+transformations". The decorations are all the add-on's meteor areas.
+
+**What the stage does.** Its header is Maxwell's (triangle strip out, 3 vertices, one invocation). Every code reads
+its three input vertices, copies the position and the generics and emits the triangle. Besides that:
+
+- **The six forms' (15 stages):** from generic 4 of the three vertices (three components) it makes the cross product
+  of two edges, times 10000, as integers, and adds it with atomic adds (`RED`, nine a triangle) to three places of a
+  storage buffer: 12 bytes a place, the place from generic 0's x of each vertex read as an integer. The buffer's
+  address is the geometry stage's first in c0 (`0x410`). By the look of it: each vertex's normal, summed from its
+  triangles, for a model whose shape is made in the vertex stage. No triangle is left out.
+- **The meteor decorations' (7 stages):** it compares generic 27's x of each vertex with 1.0 and ends without output
+  for a triangle the test marks. No buffer.
+
+So without the stage the forms were drawn with every triangle and the same outputs, and with the buffer empty. With
+the stage the face, the shading and the ring's inside are right ("Checked"), so the buffer is what they are made from;
+who reads it (a later pass of the same model, most likely) was not looked at.
+
+**The codes' own instructions** (`frontend/ampere/geometry_inhale.h`; Mesa NAK's table has OUT, the other names are
+this reading's):
+
+| op | read as | lowered to |
+|---|---|---|
+| `0x34e` | LEPC Rd: the instruction's own address | MOV of 0 (its only use is the next row) |
+| `0x357` | BMOV.64: the address of an at-exit handler, which an EXIT then goes through | nothing, and only where the handler is `OUT` (neither emit nor cut), `0x957`, `EXIT`: it ends the output stream, which SPIR-V does by itself |
+| `0x957` | the at-exit register cleared (in the handler) | not lowered: the lowering stops at the main code's EXIT |
+| `0x923` | ISBERD Rd, [Ra] in the map region: an input vertex's handle from its number | Maxwell's ISBERD (the handle is the number; ALD's vertex operand is then `gl_in`'s index) |
+| `0x324` | OUT Rd, Ra, RZ, bits 78-79 emit / cut | Maxwell's OUT with stream 0 |
+
+The renderer's capture ends a code at its first unconditional EXIT; a geometry stage's is handed over whole
+(`parse_code`), so that the lowering can look at the handler.
+
+**The renderer** (`gpu/vk/geometry_stage_inhale.h`, called from `vk_shader.cpp`): the geometry code is in the program's
+key (`geometry_key`; a program without one keeps its key, so kept programs stand), in its record (`codes[2]`: the
+pipeline state list's third code, a mesh program's task stage there) and in the translation, after the vertex stage
+and before the fragment stage. The depth conversion and the noperspective outputs' scaling move from the vertex stage
+to it. The input is taken as triangles (the header does not say, and the draw's primitive is not known where the
+program is translated): a draw of such a program with another primitive is left out with a log line
+(`build_graphics`). Eden's EmitVertex and EndPrimitive asked for the GeometryStreams capability, a transform feedback
+feature the device is not made with; stream 0 now uses the plain instructions. A device without `geometryShader`
+draws as before.
+
+**Checked.**
+
+- The shader preparation from a fresh folder (`RX_VK_PRECOMPILE=1`, RX 7900 XTX, RADV; `work/runs/i27/prep_*.txt`):
+  before, "232 failed"; after, "1 failed" and 231 more programs made (85094 against 84863). The 231 are the 77
+  programs, each for three vertex input variants. The one left is a fragment stage (`c82e2ab956412ffb`, "no
+  unconditional EXIT"), which failed before too and is not a geometry program's.
+- The 231 geometry modules pass `spirv-val` (Vulkan 1.3, with the uniform buffer standard layout Eden's modules use).
+  One of a form's read through: triangles in, a strip of 3 out, nine atomic adds to `ssbo0`, three EmitVertex and an
+  EndPrimitive.
+- An unattended walk to the start of Scale the Cement Summit (`work/runs/i27/stage.sh`) with the build before and
+  after: the same picture, nothing left out or failed in the log. No geometry program is drawn there.
+- **In the game**, played by hand in a window (RX 7900 XTX, RADV, a copy of the launcher's save, 5120 x 2880):
+  Scissor-Lift Mouth at the spot of the issue's first picture (Scale the Cement Summit) and Ring Mouth at the spot of
+  its second (Concrete Isles). Both are drawn as the game has them: the face at its size and place, the body pink and
+  shaded, the lift orange, the ring's inside the mouth with its depth, where the issue's pictures have a red dot for
+  a face, a pale flat body and a flat dark disc. The logs name 8 of Elevator's and 6 of Ring's geometry programs
+  among those translated in play (matched by their vertex and fragment code keys), nothing failed (551 and 338
+  programs, 0 failed) and no draw was left out for its primitive. Two steered headless runs had not reached either
+  form before that (enemies, a mid-boss; the save has no Treasure Road of a mouthful form).
+- Tests: `tests/test_lower_geometry_inhale.py` (made-up code words: the four instructions, the refused cases, the
+  capture) and `tests/test_geometry_stage_key_inhale.py` (`graphics_key` and `program_pick` cut from the source).
+  Each fails on the source before the change for the bug's reason.
+
+**Not checked.**
+
+- Who reads the buffer, and so why its sums change the face and the shading. RingClock, RingGear, Glider and DumpCar
+  in the game. A draw with another primitive than triangles (none came up: the log has no such line).
+- A shot of the build before the change on this PC, at the same spots: the pictures before are the issue's.
+- The add-on's meteor areas, NVIDIA, Intel, Windows, a device without `geometryShader`.
+- The caches: `vk_shader.cpp` and Eden's files are in the translator's stamp, so the first start after this change
+  prepares every program again, as after any change there.

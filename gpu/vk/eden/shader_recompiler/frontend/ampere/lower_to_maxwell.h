@@ -32,6 +32,9 @@ struct Instruction {
     }
 };
 static_assert(sizeof(Instruction) == 16);
+} // namespace Shader::Ampere
+#include "shader_recompiler/frontend/ampere/geometry_inhale.h"   // (inhale) the geometry stage, which upstream does not lower
+namespace Shader::Ampere {
 
 // (longshot) set by the Vulkan back end when the GPU's cooperative matrices passed its self-test
 // (vk_coopmat.cpp): HMMA.16816.F16 then lowers to the HMMA_nx2 pseudo instruction (one subgroup
@@ -3481,6 +3484,7 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
             // Kept as an nx2 pseudo instruction (Maxwell 0xefc0, free there) that the frontend
             // reads for the task or mesh stage: data/dest 0-7, Ra 8-15, offset 20-43, .32 44,
             // .ATTR 45, .SKEW 46, .O 47, write 48. Addresses are linear bytes in the region.
+            if (LowerGeometry(code, index, predicate, result.instructions)) break;   // (inhale) a vertex's handle
             const bool write = opcode == 0x927;
             const u32 region = insn.Bits(76, 2);
             const bool output = insn.Bits(79, 1) != 0;
@@ -3533,6 +3537,7 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
             break;
         }
         default:
+            if (LowerGeometry(code, index, predicate, result.instructions)) break;   // (inhale) LEPC, BMOV.64, OUT
             return fail(index, "unsupported native opcode");
         }
         if (!operand_error.empty()) return fail(index, operand_error);

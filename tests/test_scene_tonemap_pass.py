@@ -54,7 +54,8 @@ def wiring():
         args = made.group(1)
         if "const Code& vs" in args:
             continue
-        if not re.search(r"(tonemap|scene_tonemap)\s*\)?$", args.strip()) and "fs_head" not in args:
+        # ((inhale) and after it the geometry stage, where the program may have one: gsc, st.gs, geometry_code(...))
+        if not re.search(r"(tonemap|scene_tonemap)\s*(, (gsc|st\.gs|geometry_code\(.*\)))?\)?$", args.strip()) and "fs_head" not in args:
             fails.append("graphics_key(%s) without the tone mapper" % args)
     if shader.count("p->scene_tonemap = ") < 2:
         fails.append("a program made without its scene_tonemap")
