@@ -944,7 +944,8 @@ bool is_oot_row(const Row& r) {
 // (inhale) the rows made for this game: hidden only while the other game runs (oot_game 1)
 bool kirby_row(const Row& r) {
     return r.value == &opts.dof || r.value == &opts.scene_size || r.value == &opts.kirby_dynres ||
-           r.value == &opts.centre_front || r.value == &opts.queue_order;
+           r.value == &opts.centre_front || r.value == &opts.queue_order || r.value == &opts.kirby_fps ||
+           r.value == &opts.kirby_keep_speed;
 }
 // (inhale: upstream's, gone from here with the row (menu/pipeline_list.cpp): row_shown hides the row by it)
 bool is_share_row(const Row& r) { return !r.value && r.tab == TAB_DEBUG && !strcmp(r.name, "Save my pipeline list"); }
@@ -1819,6 +1820,8 @@ bool fps_vram_over = false;                    // (the VRAM line in red: past wh
 /// The frame rate cap in effect: HOS_FPS_MAX's over the Game frame rate cap row's
 int fps_cap_now() {
     static const int env_max = getenv("HOS_FPS_MAX") ? std::max(1, atoi(getenv("HOS_FPS_MAX"))) : 0;
+    static const int kirby_env = env_int("HOS_KIRBY_FPS", 0);   // (inhale) the Frame rate row's 30, HOS_KIRBY_FPS over it:
+    if (kirby_env == 30 || (kirby_env != 60 && opts.kirby_fps)) return 30;   // (inhale) the game draws 30 (host/kirby_fps.c)
     return fps_stats::cap_rate(opts.fps_cap, env_max);
 }
 double fps_target_ms() {

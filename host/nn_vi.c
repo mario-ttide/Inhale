@@ -677,6 +677,7 @@ void hos_vi_native_presented(const int64_t phases[4]) {
     }
     const int64_t n = InterlockedIncrement64(&presents);
     present_trace(n, now, phases);
+    { void kirby_fps_presented(void); kirby_fps_presented(); }   /* (inhale) the Frame rate and Keep speed rows: host/kirby_fps.c */
     {   /* (hookshot) the mods' cheats that are on, once a presented frame (host/cheats.c) */
         void hos_cheats_frame(void);
         hos_cheats_frame();

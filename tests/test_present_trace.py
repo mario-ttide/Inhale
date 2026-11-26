@@ -76,6 +76,7 @@ static void scan_dt(long long frame) { (void)frame; ++scans; }
 static void realtime_step(int64_t now) { (void)now; ++steps; }
 static void hos_log(const char *fmt, ...) { (void)fmt; }
 void hos_cheats_frame(void) {}   /* (host/cheats.c: the mods' cheats, at each present) */
+void kirby_fps_presented(void) {}   /* (inhale) host/kirby_fps.c: the Frame rate and Keep speed rows, at each present */
 static uint64_t hos_ticks(void) { return 0; }
 static int fps_max(void) { return 60; }   /* (nn_vi.c's Frame rate cap: the console's 60 here) */
 '''

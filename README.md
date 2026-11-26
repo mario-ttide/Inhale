@@ -50,6 +50,7 @@ sessions are lost.
 | Windows | ✅ The installer, tested on Windows 11 with an NVIDIA RTX 2080 SUPER, built from the extracted folders. The `.nup` route there is still to be tried. Up to v0.3.0 play hitched now and then there (frames of 40 ms and more, on that card and the 780M); fixed in v0.3.1 |
 | AMD cards on Windows | ⚠️ One tried, a Radeon 780M (integrated): v0.2.0 draws coloured discs over the picture there. Fixed in v0.3.0, checked on that card in the first stage only |
 | Intel cards | ⚠️ Iris Xe on Linux (Mesa) tried. Up to v0.3.1, Kirby and the enemies were drawn as clear shapes there. Fixed in v0.4.1. Integrated ones are slow: 20-28 frames a second reported on an Iris Xe with the handheld profile, 11 on a UHD 620 (23 with **Handheld scene size** 960 x 540, see Resolution below) |
+| Slow graphics cards | ⚠️ The game keeps its speed down to 20 frames a second and is in slow motion under that. New in v0.7.0: **Graphics, Frame rate** 30, a steady 30 frames a second at the game's speed, for a card that holds 30 but swings under 60 (checked on an AMD card on Linux). On a card under 30 it is slower than 60: on an Intel UHD 620 the handheld profile runs at the game's speed at 640 x 360 and 960 x 540 (28 and 24 frames a second) and at about half speed at 1280 x 720 (16). Also new in v0.7.0: **Graphics, Keep speed under 20 FPS**, off unless you turn it on, which keeps the game's speed down to 10 frames a second (on that UHD 620, full speed at 1280 x 720 at 14 to 15 frames a second, and at 1920 x 1080 at 11). Not tried against bosses, mouthful forms or timed minigames: see Frame rate below |
 | Cards without mesh shaders (such as NVIDIA GTX 10 and AMD RX 5000) | ⚠️ Should run through a slower compute path (upstream's). Not tried with this game |
 
 ## Install and play
@@ -154,6 +155,22 @@ that size and stretched to the screen (on an integrated Radeon 610M 1280 x 720 g
 enlarged corner of the scene for some seconds on a card without the game's upscaler (AMD and Intel integrated ones);
 fixed since. After you update
 Inhale Builder, choose **Update an existing game folder** to build your folder again with the new version.
+
+**Frame rate.** The game runs at 60 frames a second. On a slower PC it keeps its own speed down to 20 frames a
+second, and under that it goes into slow motion. Where a graphics card holds 30 but swings under 60, set **Graphics,
+Frame rate** to 30 (new in v0.7.0): the game then draws a steady 30 frames a second at the same game speed. It applies
+at once; the opening movie and the loading screens stay at 60. The environment variable `HOS_KIRBY_FPS=30` (or `60`)
+chooses for that run and locks the row. On a card that stays under 30, leave it at 60: 30 is slower there (an Intel
+UHD 620 at 960 x 540 gave 24 frames a second at the game's speed at 60, and 20 at three quarters of the speed at 30).
+Choose a smaller scene for such a card instead (Resolution, above).
+
+Where a card stays under 20 frames a second all the same, **Graphics, Keep speed under 20 FPS** (new in v0.7.0, off
+unless you turn it on) takes the slow motion away: the game keeps its own speed down to 10 frames a second. It does
+not add frames: on an Intel UHD 620 at 1280 x 720 the game ran at about 16 frames a second at a little over half its
+speed, and runs at about 15 at its full speed with the row on. With it on, Frame rate 30 no longer slows the game
+under 30 either. It applies at once; `HOS_KIRBY_KEEP_SPEED=1` (or `0`) chooses for that run and locks the row.
+The game then moves further in one frame than its makers allowed for, and that was tried in two short walks only: if
+Kirby or an enemy passes through a wall or a floor, or a timer runs wrong, turn the row off and report it.
 
 **If the picture goes wrong where an older version drew it right**, set **Debug, Graphics queue order** to Arrival
 (after a restart) and report what you see. It hands the game's graphics work to your PC in the order of v0.2.0

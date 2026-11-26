@@ -42,6 +42,8 @@ FROZEN = {   # (a key: the value its row saves, as players' files hold them)
     "kirby_dynamic_res": "&opts.kirby_dynres",   # (inhale: the same, host/kirby_res.c)
     "centre_to_front": "&opts.centre_front",     # (inhale: the same, host/nn_audio.c)
     "kirby_queue_order": "&opts.queue_order",    # (inhale: the same, host/kirby_queue.c)
+    "kirby_frame_rate": "&opts.kirby_fps",       # (inhale: the same, asked every present by host/kirby_fps.c)
+    "kirby_keep_speed": "&opts.kirby_keep_speed",   # (inhale: Keep speed under 20 FPS, the same)
     "pad_per_player": "&opts.pad_per_player",   # (inhale: One controller per player, gpu/vk/menu/kirby_coop.cpp)
     "drift_correction": "&opts.input_replay_sync",
     "descriptor_reuse": "&opts.descriptor_reuse",

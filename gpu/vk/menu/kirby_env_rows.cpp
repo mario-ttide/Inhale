@@ -3,7 +3,9 @@
 // (HOS_AUDIO_CENTRE) after the Speaker layout, Graphics queue order (HOS_KIRBY_QUEUE_ORDER) on the Debug tab. The host
 // reads each once, the variable over the row's line (host/kirby_option.h, host/kirby_res.c), so each applies after a
 // restart, and a row whose variable is set is locked. vk_menu.cpp's row_shown hides them while the other game runs
-// (kirby_row).
+// (kirby_row). And Frame rate (HOS_KIRBY_FPS, 30 or 60) after Dynamic resolution: the host asks for it every present
+// (HOS_OPT_KIRBY_FPS, host/kirby_fps.c), so that one applies in play. Keep speed under 20 FPS (HOS_KIRBY_KEEP_SPEED,
+// 1 or 0) after it, the same way (HOS_OPT_KIRBY_KEEP_SPEED).
 #include "menu_module.h"
 #include "../compat/inhale_env.h"   // (env_int)
 
@@ -15,6 +17,18 @@ namespace mkwvk {
 namespace {
 const char* locked_by(const char* name) {
     // (as the host reads them: an on/off switch is set when it is there at all, the height when it is a number)
+    if (!strcmp(name, "HOS_KIRBY_FPS")) {   // (a choice only at 30 or 60, as host/kirby_fps.c reads it)
+        const int fps = env_int(name, 0);
+        return fps == 30 || fps == 60
+                   ? "Set by HOS_KIRBY_FPS (inhale_env.txt or the environment): remove that line to choose here."
+                   : nullptr;
+    }
+    if (!strcmp(name, "HOS_KIRBY_KEEP_SPEED")) {   // (a choice only at 0 or 1, as host/kirby_fps.c reads it)
+        const int on = env_int(name, -1);
+        return on == 0 || on == 1
+                   ? "Set by HOS_KIRBY_KEEP_SPEED (inhale_env.txt or the environment): remove that line to choose here."
+                   : nullptr;
+    }
     if (!strcmp(name, "HOS_SCENE_HEIGHT") ? env_int(name, -1) < 0 : !getenv(name)) return nullptr;
     if (!strcmp(name, "HOS_SCENE_HEIGHT"))
         return "Set by HOS_SCENE_HEIGHT (inhale_env.txt or the environment): remove that line to choose here.";
@@ -49,7 +63,27 @@ MENU_MODULE(kirby_env_rows) {
               .restart = true,
               .preset_exempt = true,
               .shown = [] { return opts.handheld == 0; },
-              .locked = [] { return locked_by("HOS_DYNAMIC_RES"); }}, menu::after("handheld_scene_size"));
+              .locked = [] { return locked_by("HOS_DYNAMIC_RES"); }}, menu::after("handheld_scene_size"))
+        .row({.key = "kirby_frame_rate",
+              .label = "Frame rate",
+              .help = "60 is the game's. 30 draws half the frames at the same game speed, for a graphics card that holds "
+                      "30 but swings under 60. On a card that stays under 30 it is slower than 60: leave it at 60 there. "
+                      "Applies at once.",
+              .value = &opts.kirby_fps,
+              .lo = 0, .hi = 1,
+              .choices = {"60", "30"},
+              .preset_exempt = true,
+              .locked = [] { return locked_by("HOS_KIRBY_FPS"); }}, menu::after("kirby_dynamic_res"))
+        .row({.key = "kirby_keep_speed",
+              .label = "Keep speed under 20 FPS",
+              .help = "Off is the game's: under 20 frames a second it goes into slow motion. On keeps the game's speed "
+                      "down to 10 frames a second, with larger steps than the game's makers allowed: turn it off if "
+                      "something passes through a wall or a floor. Applies at once.",
+              .kind = menu::Kind::Toggle,
+              .value = &opts.kirby_keep_speed,
+              .lo = 0, .hi = 1,
+              .preset_exempt = true,
+              .locked = [] { return locked_by("HOS_KIRBY_KEEP_SPEED"); }}, menu::after("kirby_frame_rate"));
     menu::tab("audio")
         .row({.key = "centre_to_front",
               .label = "Centre in front speakers",

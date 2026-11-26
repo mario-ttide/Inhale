@@ -26,7 +26,7 @@ STUBS = r'''
 #include "gpu/vk/vk_api.h"
 
 namespace fps_stats = mkwvk::fps_stats;
-struct { int fps_cap = 0, vsync = 0, framegen = 0; } opts;
+struct { int fps_cap = 0, vsync = 0, framegen = 0, kirby_fps = 0; } opts;   // (inhale: kirby_fps, fps_cap_now reads it)
 int refresh_mhz = 0;
 int display_refresh_mhz() { return refresh_mhz; }
 

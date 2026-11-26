@@ -751,7 +751,8 @@ shows; no row or string was deleted.
   be sure, Render resolution (its values are read by no host code), Upscaler and DLSS model (the chain replaces only the
   other game's programs), Frame generation by (DLSS frame generation needs that upscaler's picture), Game frame rate cap
   and Game speed (the limiter and the time step need the other game's graphics module; measured: a cap of 120 still gives
-  60, a cap of 30 gives 30 presents with the same game state each, so half speed), Disable camera centering.
+  60, a cap of 30 gives 30 presents with the same game state each, so half speed; the half speed is not what a later
+  build does: "issue #26, a frame rate of 30", below), Disable camera centering.
 - A hidden row's saved value is held at its default while the row is hidden (`oot_rows_hold`, for the run only: the
   file keeps its value). Checked with a saved cap of 30: 60.0 presents a second.
 - Any game but the other one stays 16:9 (`host/hos_main.c`): told another shape, the renderer stretched the 16:9
@@ -2566,8 +2567,11 @@ What a real 120 or 144 would take:
   sites, besides the counters, and integer counters cannot take half a step. Not practical.
 - **Frame generation** stays the way to fill a 144 Hz screen. Its ghosting in this game was not looked at.
 
-Not checked: whether the vsyncs-a-frame count (1 here) ever scales the game's step, as the Switch 1 30 fps mode
-would need. The experiment's sound was not heard either: `HOS_AUDIO=0`.
+The vsyncs-a-frame count (1 here) does scale the game's step, as the Switch 1 30 fps mode needs: at 2 the game draws
+30 frames a second with a step of two 60ths (2026-11-25, "issue #26, a frame rate of 30", below). The step is not
+fixed either: in play the loop is in its variable step mode, and a frame of two or three vsyncs gets a step of 2 or 3.
+It is never under 1, so the rest of this section stands: a loop faster than 60 is a faster game. Not checked: the
+experiment's sound was not heard, `HOS_AUDIO=0`.
 
 ### 2026-11-23: issues #23, #11 and #17, music after a boss
 
@@ -2961,3 +2965,208 @@ draws as before.
 - The add-on's meteor areas, NVIDIA, Intel, Windows, a device without `geometryShader`.
 - The caches: `vk_shader.cpp` and Eden's files are in the translator's stamp, so the first start after this change
   prepares every program again, as after any change there.
+
+### 2026-11-25: issue #26, a frame rate of 30
+
+The report (an Iris Xe laptop): the game is fine in small areas and lags in large ones; it asks for frame rate targets
+(30, 40, 60). Built: a Graphics row, **Frame rate**, 60 or 30, that applies in play. At 30 the game draws 30 frames a
+second and each one advances two 60ths of a second, so the game keeps its speed. And a second row, **Keep speed under
+20 FPS**, off unless chosen: it raises the ceiling of the game's step from three vsyncs to six, so the game keeps its
+speed down to 10 frames a second where its own ceiling puts it in slow motion under 20.
+
+**The engine's frame rate controller.** The main loop (`f_806737e0`, main+0x6537e0; issue #22's section, above) paces
+itself with an object that its constructor (`f_80669180`) fills. It is the loop's `this`, and the pointer at
+main+0x2c39c68 points to a pointer to it.
+
+| field | meaning | constructor | in play |
+|---|---|---|---|
+| `+0x60` | mode: 0 fixed step with frame skip, 1 fixed step, 2 variable step | 0 | 2 |
+| `+0x10`, `+0x14`, `+0x20` | mode 0: vsyncs a frame, updates a frame, most frames skipped in a row | 1, 1, 10 | 1, 1, 10 |
+| `+0x24`, `+0x28` | mode 1: vsyncs a frame, updates a frame | 1, 1 | 1, 1 |
+| `+0x34` | mode 2: the step's ceiling (float) | 60.0 | 3.0 |
+| `+0x3c` | mode 2: vsyncs a frame | 1 | 1 |
+| `+0x40`, `+0x44` | mode 2: the step averaged, over this many frames | 0, 4 | 1, 4 |
+| `+0x6c` | mode 2: this frame's step in 60ths (float): the vsyncs of the 60 Hz clock since the last frame began | | 1.0 |
+| `+0x71` | this frame is drawn (0: a frame mode 0 skips) | 1 | 1 |
+
+- The update loop (main+0x659834) runs `+0x14` or `+0x28` times a frame in modes 0 and 1, and once in mode 2. About 30
+  functions read "the frame's step" by the mode: `(float)+0x14`, `(float)+0x28` or `+0x6c` (`f_8090dd40`,
+  `f_806db494`); the 1/60 at main+0x6595b8 is multiplied by it.
+- Play, the title screen, the town and the beach cutscene run in mode 2. The first start's dialogs and its opening
+  movie run in mode 0 (about 95 s), and so do loads between screens.
+- The game writes `+0x3c` = 1 again when it comes back to mode 2 (seen twice in a start). The code that goes to mode 2
+  and sets the ceiling of 3.0 was not found by reading.
+- The vsyncs are counted by the clock (`GetSystemTick`), not by the host's vsync events: a frame that takes 33 ms has
+  a step of 2 whoever made it slow.
+
+**The game already keeps its speed down to 20 frames a second, and not under.** Measured on the RX 7900 XTX, headless,
+S5's walk on the wall clock, the log of `HOS_FPS_LOG=1` (presents a second, and the game's speed: the steps a second
+over 60), with frames slowed by `HOS_FRAME_SLEEP_MS` (`work/runs/i26/`):
+
+| run | presents a second | step | game speed |
+|---|---|---|---|
+| 60, nothing slowed (`f60`) | 60.0 | 1.000 | 1.000 |
+| 20 ms slept a frame (`sleep20`) | 42.6 | 1.25 to 1.5 | 1.000 |
+| 45 ms (`slow45`) | 20.7 | 3.000 | 1.000 |
+| 70 ms (`slow70`) | 13 | 1.000 as sampled | 0.42 to 0.50 |
+| the host's cap, `HOS_FPS_MAX=30` (`cap30`) | 30.0 | 2.000, 1.750 | 1.000 |
+| **`+0x3c` = 2** (`f30`, `r30`) | 30.0 | 2.000 | 1.000 to 1.001 |
+| `+0x3c` = 2 and 40 ms slept (`slow40at30`) | 23.0 | 2.750 | 1.000 |
+
+A frame longer than the ceiling's three vsyncs does not get a step of 3: the step falls back, and the game runs in
+slow motion (at 13 presents a second, about half speed; the shots of `slow70` are another scene than the 60 walk's at
+the same time). So the report's "lag" in large areas is most likely the game under 20 frames a second. The 30 row does
+not cure that. What would is a higher ceiling: with `+0x34` held at 6.0 and 70 ms slept a frame the game ran at 13.6
+presents a second, a step of 4.25 to 4.5 and a speed of 1.000, and with 8.0 and 100 ms at 9.6 presents and 1.000
+(`c70`, `c100`: temporary code then; `c70`'s shots are the 60 walk's scenes at equal wall time). That is the second
+row, Keep speed under 20 FPS. It is off unless a player turns it on: on, a frame under 20 frames a second advances
+the game by four to six 60ths at once, steps the game's makers did not allow, and those were tried here against one
+ledge and one enemy and no more (Not checked, below).
+
+The host's cap of 30 keeps the speed too (the row's shots and `cap30`'s are both the 60 walk's scenes at equal wall
+time). This document said "a cap of 30 gives 30 presents with the same game state each, so half speed" (the in-game
+menu, above): that is not what this build does. How it was measured then is not recorded; a walk on the frame clock
+(`HOS_INPUT_FRAME_CLOCK=1` counts presents) would look like it. The host's cap is still not the row's way: it holds the
+game back from outside, so the step is what the clock happens to measure (1.75 in one sample), where the engine's own
+30 gives 2.000 every frame.
+
+**The change.** `host/kirby_fps.c`, called once a presented frame (`hos_vi_native_presented`, `host/nn_vi.c`, one
+`(inhale)` line):
+
+- `kirby_fps_apply(want30)`: for this game's build only, with the controller made, in mode 2. At 30 it writes
+  `+0x3c` = 2 where it finds the game's 1 and a ceiling of 2.0 or more, each present (the game writes its 1 back). At
+  60 after that it writes the 1 back where its own 2 still stands. At 60 from the start it writes nothing and reads
+  nothing. Another count, or a ceiling under 2 (the step could not reach 2: half speed), is left and logged once.
+  Modes 0 and 1 are left: the opening movie and the loads stay at 60 with the row at 30.
+- The choice: `HOS_KIRBY_FPS=30` or `60`, else the row, asked every present (`HOS_OPT_KIRBY_FPS`, 1002: the existing
+  option callback, `gpu/vk/vk_replay.cpp`).
+- `kirby_fps_keep_speed(want)`, before it in the same call: the same build, controller and mode. On, it writes
+  `+0x34` = 6.0 (`KIRBY_FPS_TOP`) where it finds the game's 3.0, each present. Off after that, it writes the 3.0 back
+  where its own 6.0 still stands. Off from the start it reads nothing and writes nothing. Any other ceiling (the
+  constructor's 60.0, a 6.0 that was there before the row went on) is left and logged once. The 6.0 stays through a
+  load (mode 0 does not read it). Why 6.0: 4.0 would stop at 15 frames a second, above the 14.5 the UHD 620 makes at
+  1280 x 720 (below); 8.0 kept the speed at 9.6 too, a larger step for a frame rate nobody plays at.
+- Its choice: `HOS_KIRBY_KEEP_SPEED=1` or `0`, else the row (`HOS_OPT_KIRBY_KEEP_SPEED`, 1003), asked every present.
+  The two rows do not need each other: the 30 only needs a ceiling of 2.0 or more.
+- The row: `gpu/vk/menu/kirby_env_rows.cpp`, key `kirby_frame_rate`, after Dynamic resolution; hidden while the other
+  game runs (`kirby_row`); locked by the variable at 30 or 60. The FPS counter's target follows (`fps_cap_now`,
+  `gpu/vk/vk_menu.cpp`): 33.3 ms at 30. The host's own pacing stays at 60: the game's limiter does the 33.3 ms wait.
+  Keep speed under 20 FPS is the next row, key `kirby_keep_speed`, a toggle, off in a new options file, hidden and
+  locked the same way (the variable at 0 or 1).
+- 40 and other targets are not offered: the engine counts whole vsyncs of a 60 Hz clock, so 30 and 20 come free and
+  40 does not.
+
+**Checked** (RX 7900 XTX, headless, `work/runs/i26/`):
+
+- S5's walk at 30 with a shot every 15 presents (`f30fine`) against the walk at 60 (`f60`, every 300) by wall time
+  (`wallcmp.py`: the logs' present counts give each shot its time): each of the 60 walk's 19 shots has a shot of the 30
+  walk within 6.5 of 255 near its time (15 of them within 0.2 s, the rest in a still scene). A shot every 150 presents
+  alone (`f30`, the same present twice over) leaves two of 19 over 30, both in a change of screen. 150 of 150 present
+  intervals in 30 to 40 ms; 0 flashes in 2882 presents (`RX_VK_FLASH=1`, `fl30`; 0 in 5980 at 60, `fl60`). The walk at
+  60 against a walk of the tree with the log alone: 0 of 19 over 30 (`f60`, `ref60`).
+- An Everbay Coast stage with an enemy (`st60`, `st30`): the same scene at equal wall time, Kirby, the enemy and a
+  jump's frame at the same place (0.1 to 18 of 255, lag 0.3 s; `st_sheet.jpg`).
+- The first start with sound (`mv60`, `mv30`, `mv30b`): the dialogs and the opening movie at 60 in both (mode 0), the
+  sound of the two runs in step (correlation of the loudness 0.88 to 0.99, lag 0.00 to 0.03 s); the beach cutscene at
+  30, its shots the 60 run's at equal wall time (0.5 to 9.4) and its sound in step at a constant 0.23 s (0.96 to
+  1.00): no drift.
+- The row changed in play by `RX_VK_MENU_SCRIPT` with `RX_VK_SHOT_MENU=1` (`sw2`): 60, 30 for 25 s, 60 again; 30.0 and
+  60.0 presents a second, the game's speed 0.997 to 1.004 over the windows that hold a change; the counter shows 30
+  FPS and 33.3 ms in green. The row's line in the options file alone (`kirby_frame_rate=1`, `r30`): 30.0.
+- `tests/test_kirby_fps.py`: `kirby_fps_apply`, `kirby_fps_keep_speed`, the two choices and the present's call cut
+  from the source over a stand-in for the guest's memory, and `fps_cap_now` and the rows' `locked_by` cut and
+  compiled. 69 single changes that undo a line of the change each fail it.
+- At 60 nothing moved: the verify walk at 3840 x 2160 on the tree without the change and with it, on the RX 7900 XTX
+  (21 of 21 shots, 0 over 30) and the Ryzen's integrated GPU (12 of 12, 0 over 30) (`v_ref_*`, `v_new_*`).
+
+**Checked, Keep speed under 20 FPS** (the same PC, frames slowed by `HOS_FRAME_SLEEP_MS`; `work/runs/i26/k_*`; each
+run's first 300 presents, which hold the start, left out):
+
+| run | presents a second | step | ceiling | game speed |
+|---|---|---|---|---|
+| off, nothing slowed (`k_off`) | 60.0 | 1.000 | 3.00 in every line | 1.000 |
+| off, 70 ms slept a frame (`slow70`, before) | 13 | 1.000 as sampled | 3.00 | 0.42 to 0.50 |
+| **on**, 70 ms (`k_on70`) | 13.5 to 13.7 | 4.25 to 4.5 | 6.00 | 1.000 |
+| on, 100 ms (`k_on100`): under 10, the row's limit | 9.5 to 9.6 | 1.000 | 6.00 | 0.56 to 0.58 |
+| Frame rate 30 alone, 70 ms (`k_30_70`) | 13.4 to 14.0 | 1.000 | 3.00 | 0.43 to 0.51 |
+| both rows on, 70 ms (`k_both70`) | 13.5 to 13.7 | 4.25 to 4.5 | 6.00 | 1.000 |
+| both rows on, 45 ms (`k_both45`) | 20.7 to 20.8 | 2.75 to 3.0 | 6.00 | 0.999 to 1.000 |
+
+- Off, the walk is the walk before the row: `k_off` against part 1's `f60`, 18 of 18 shots within 7.4 of 255.
+- On at 70 ms, S5's walk shows the 60 walk's scenes at equal wall time: 19 of 19 of `f60`'s shots have a shot of
+  `k_on70` within 20.4 near their time (`wallcmp.py`), where the walk with the row off (`slow70`) differs by 44 to
+  62 in its shots near 35, 45 and 55 s: another scene.
+- The row changed in play at 70 ms (`k_sw`, `RX_VK_MENU_SCRIPT`): off, on at 30 s, off at 75 s. The ceiling reads
+  3.00, 6.00, 3.00 and the speed 0.47, 1.000 and 0.51 in the windows that hold no change.
+- An Everbay Coast stage at 70 ms with the row on, twice (`k_st70`, `k_st70b`), against the stage at 60 with a shot
+  every 45 presents (`k_st60f`): the speed is 1.000 in the stage at steps of 4.25 to 4.5. Kirby is on the same path
+  shot for shot, takes the same coin (3125) and ends against the same ledge after 9 s with the stick held into it
+  (`k_st70_sheet.jpg`). The enemy wakes and chases in all three; its place differs by about its own length between
+  the 60 run and the 70 ms runs, and between the two 70 ms runs as much, so the runs neither show nor rule out a
+  change in it.
+- 0 flashes in 1339 presents with the row on at 70 ms (`RX_VK_FLASH=1`, `k_fl70`).
+- 30 alone at 45 ms slept kept its speed here too (`k_30_45`: 20.7 presents a second, 1.000), as `slow40at30` did:
+  the sleep is no stand-in for the UHD 620's frames of four vsyncs at 30 (below), so that pair says nothing.
+
+**Not checked.** Steps of four to six 60ths (Keep speed under 20 FPS) against a boss, a mouthful form, a minigame
+with a timer, a thin wall or a fast projectile: real play at under 20 frames a second, which is why the row is off
+unless chosen. A step past the ceiling: a frame longer than six vsyncs still falls back to a step of 1 (`k_on100`),
+so a hitch of over 100 ms is a short slow motion with the row on, as one of over 50 ms is without it. The row gives
+back a 6.0 by its value: if the game itself wrote 6.0 while the row held it, turning the row off would write 3.0
+over the game's (the game was seen to write 3.0 and the constructor's 60.0 only). Frame generation at 30: it does not run without a window, and the runs are headless (it measures
+the game's frame time itself, `gpu/vk/vk_framegen.cpp`, so 2x should show 60; not seen). A window, V-Sync, a 144 Hz
+screen. A boss, a mouthful form, a minigame with a timer. Windows, NVIDIA, Intel. The row at 30 on a PC that does not
+reach 30 was only simulated (`slow40at30`). A card that sits between 30 and 60
+(none here: the UHD 620 below is under 30 at every size but the smallest).
+
+**On the Intel UHD 620** (the T480s of "handheld on a slow GPU", Mesa, an x86-64-v3 build of this tree; S5's walk,
+handheld, on the frame clock, 330 s, 450 s at 720 lines; the walk's second half, in the town; `work/runs/dohko/i26_*`):
+
+| scene (`HOS_SCENE_HEIGHT`) | Frame rate | presents a second | game speed | GPU ms a frame | frames of 22-30 / 30-40 / over 40 ms |
+|---|---|---|---|---|---|
+| 640 x 360 | 60 | 24.0 to 33.8, mean 28.4 | 0.95 to 1.00, mean 0.989 | 20.6 | 31% / 50% / 19% |
+| 640 x 360 | 30 | 24.2 to 29.6, mean 26.1 | 0.93 to 1.00, mean 0.987 | 21.5 | 6% / 68% / 27% |
+| 960 x 540 | 60 | 23.0 to 24.2, mean 23.9 | 0.97 to 1.00, mean 0.992 | 29.9 | 0% / 33% / 67% |
+| 960 x 540 | 30 | 16.7 to 26.2, mean 19.7 | 0.61 to 1.00, mean 0.751 | 29.3 | 0% / 19% / 81% |
+| 1280 x 720 | 60 | 14.5 to 17.6, mean 15.6 | 0.53 to 0.67, mean 0.572 | 39.5 | 0% / 0% / 100% |
+| 1280 x 720 | 30 | 14.5 to 18.0, mean 16.2 | 0.52 to 0.69, mean 0.595 | 40.5 | 0% / 0% / 100% |
+
+- **At 60 nothing changed there**: 23.9 presents a second at 960 x 540, as before the change (23).
+- **Under 30 the row at 30 is worse than 60.** At 960 x 540 the GPU's time is the same, and the game loses a sixth of
+  its frames and a quarter of its speed. The frame table (`RX_VK_FRAME_TRACE`, `i26_540_*_prof/frames.csv`) says
+  why: at 60 the frames last two vsyncs (67%), three (31%) or four (2%); at 30, two (24%), three (27%) or four (49%).
+  Half the frames are then longer than the ceiling's three vsyncs, and those get no full step. `slow40at30` on the RX 7900
+  XTX (40 ms slept at the present) did not show it: 23 presents a second at a speed of 1.000. A sleep at the present is
+  no stand-in for a slow GPU here. So the row's help and the README say to leave it at 60 on a card under 30.
+- **At the 30 edge the row evens the frames out and no more.** At 640 x 360 this laptop makes 24 to 34 frames a
+  second (the CPU's limit: the GPU's time is 21 ms). At 30, two thirds of the frames last 30 to 40 ms, where at 60
+  they are spread over 22 to over 40; the speed is the same.
+- **The report's lag is the slow motion under 20.** At 1280 x 720 the game runs at 0.57 of its speed at either choice.
+  Only a higher ceiling (above) gives the speed back there: the next table.
+
+**Keep speed under 20 FPS on the UHD 620** (the same laptop, walk and measure, an x86-64-v3 build of the tree with
+the row; `HOS_KIRBY_KEEP_SPEED=1`; 600 s at 1080 lines; `work/runs/dohko/i26k_*`, `sum26.py` there makes the lines):
+
+| scene | Frame rate | Keep speed | presents a second | game speed | GPU ms a frame | frames of 2 / 3 / 4 / 5 / 6 vsyncs |
+|---|---|---|---|---|---|---|
+| 1280 x 720 | 60 | off, before (`i26_720_60`) | 14.5 to 17.6, mean 15.6 | 0.53 to 0.67, mean 0.572 | 39.4 | 0% / 37% / 58% / 4% / 1% |
+| 1280 x 720 | 60 | off, again | 14.4 to 19.0, mean 17.2 | 0.52 to 0.70, mean 0.626 | 38.9 | 0% / 63% / 37% / 1% / 0% |
+| 1280 x 720 | 60 | **on** | 14.4 to 16.1, mean 14.7 | 1.00, mean 1.000 | 39.1 | 0% / 7% / 92% / 1% / 0% |
+| 1280 x 720 | 30 | on | 17.8 to 19.0, mean 18.4 | 1.00, mean 1.000 | 38.1 | 0% / 87% / 13% / 0% / 0% |
+| 960 x 540 | 60 | on | 16.7 to 23.4, mean 21.6 | 1.00, mean 1.000 | 29.5 | 22% / 59% / 19% / 0% / 0% |
+| 960 x 540 | 30 | off, before (`i26_540_30`) | 16.7 to 26.2, mean 19.7 | 0.61 to 1.00, mean 0.751 | 29.3 | 24% / 27% / 49% / 0% / 0% |
+| 960 x 540 | 30 | **on** | 17.0 to 25.7, mean 21.1 | 1.00, mean 1.000 | 28.3 | 41% / 24% / 35% / 0% / 0% |
+| 1920 x 1080 | 60 | on | 11.1 to 11.4, mean 11.2 | 0.99 to 1.00, mean 0.999 | 77.0 | 0% / 0% / 0% / 84% / 15% (1% longer) |
+
+- **The slow motion is gone.** At 1280 x 720 the game runs at its own speed at 14 to 15 frames a second, where it ran
+  at 0.57 to 0.63 of it; at 1920 x 1080, at 11 frames a second with steps of five and six. No line of any run has a
+  speed under 0.99 in the walk's second half, no run logged another ceiling, and no log has an error.
+- **The frames a second are not more.** The row gives the speed back, not the frames: 14 frames a second is still 14.
+- **The 30 row's loss under 30 is gone with it.** At 960 x 540 and 30, a third of the frames still last four vsyncs,
+  and each now gets its step: speed 1.000 where it was 0.751. It is still no gain over 60 there (21.1 against 21.6
+  presents a second), so the Frame rate row's help stays as it is: under 30, leave it at 60.
+- **Presents a second do not compare between these runs to better than about 15%.** The row off twice at 1280 x 720
+  gave means of 15.6 and 17.2 with the same GPU time; what moves is the CPU's share of a frame (`render_ms` 33.5 and
+  28.2, 38.6 with the row on: `sum.py`). And the walk's presses are timed by presents, so with the game at its own
+  speed Kirby walks further on the same presses and the scene is not the same one. So the 14.7 with the row on
+  against 17.2 off, and the 18.4 at 30, are not a cost or a gain of the row. The speeds are what these runs measure.

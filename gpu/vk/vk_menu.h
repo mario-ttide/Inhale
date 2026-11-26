@@ -59,6 +59,8 @@ struct Options {
     int kirby_dynres = 0;   // Dynamic resolution: 1 the game's steps under load (HOS_DYNAMIC_RES over it)
     int centre_front = 1;   // Centre in front speakers: 1 a 5.1 mix's centre also to the front pair (HOS_AUDIO_CENTRE over it)
     int queue_order = 1;    // Graphics queue order: 1 the game's, 0 arrival (HOS_KIRBY_QUEUE_ORDER over it)
+    int kirby_fps = 0;   // (inhale) Frame rate: 0 60, 1 30 at the game's speed (HOS_OPT_KIRBY_FPS, host/kirby_fps.c; HOS_KIRBY_FPS over it)
+    int kirby_keep_speed = 0;   // (inhale) Keep speed under 20 FPS: 1 the step's ceiling at 6 (HOS_OPT_KIRBY_KEEP_SPEED, host/kirby_fps.c; HOS_KIRBY_KEEP_SPEED over it)
     int pad_per_player = 0;   // (inhale) One controller per player: 1 each its own Npad (HOS_OPT_PAD_PER_PLAYER, host/kirby_npad.c)
     int grass_distance = 0;   // short blades: 0 the game's, 1 2x, 2 3x, 3 4x (RX_VK_GRASS_DISTANCE over it)
     int shadow_res = 0;   // (longshot) Shadow resolution, the sun's cascades: 0 Auto (the size for the card's memory,

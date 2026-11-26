@@ -155,6 +155,10 @@ enum { HOS_OPT_OOT_GAME = 1000 };
    Npad, for local co-op (host/kirby_npad.c, host/pad_sdl.c); 0, the default, every controller drives No.1. The existing
    option callback: no new member. */
 enum { HOS_OPT_PAD_PER_PLAYER = 1001 };
+/* (inhale) HOS_OPT_KIRBY_FPS, 1002: the Graphics tab's Frame rate, 0 60 (the game's), 1 30 at the game's speed, read
+   every present (host/kirby_fps.c). The existing option callback: no new member. */
+enum { HOS_OPT_KIRBY_FPS = 1002 };
+enum { HOS_OPT_KIRBY_KEEP_SPEED = 1003 };   /* (inhale) Keep speed under 20 FPS: 1 the step's ceiling at 6 (host/kirby_fps.c) */
 
 /* (longshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of inhale_options.ini):
    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position (the bottom face button first:
