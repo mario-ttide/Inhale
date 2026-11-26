@@ -1163,6 +1163,17 @@ static int pads_in_background(const char *env, int menu) {
     return env ? !env_value_off(env) : menu != 0;
 }
 
+/* (inhale) The pads read now, by position (1 << HOS_PAD_*), for the software keyboard (host/kirby_swkbd.c, issue #30):
+   the game's thread waits there and reads no input of its own meanwhile, so nothing else would. 0 while another window
+   is in front, unless the pads count there */
+uint32_t kirby_pads_poll(void) {
+    if (!game_in_front() && !pads_in_background(getenv("HOS_INPUT_BACKGROUND"), rx_option(4, 0))) return 0;
+    uint64_t buttons = 0;
+    int32_t stick[4] = {0};
+    pads_read(&buttons, stick, NULL);
+    return (uint32_t)pad_raw_now;
+}
+
 /* (longshot) Whether a pad's motion counts: when its buttons do, with the game's window in front, or behind another
    window when the player asked for the pads there. Otherwise GetSixAxisSensorStates hands out the pad at rest, so a
    gyro moved while the player is in another window does not turn the camera. tests/test_motion_background.py */

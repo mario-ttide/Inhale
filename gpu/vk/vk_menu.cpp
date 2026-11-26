@@ -43,6 +43,7 @@
 #include "oot_cheat_items.h"
 #include "vk_progress.h"   // (StartupView, version_text: the start-up screen)
 #include "vk_imgui.h"   // (the renderer's side of the overlay: begin, fonts, logo, record)
+#include "kirby_swkbd.h"   // (inhale: the software keyboard's overlay, issue #30)
 #include "vk_ui.h"
 #include "vk_menu_keys.h"   // (which gamepad buttons confirm and go back: those A and B are bound to)         // (how it looks: Dear ImGui, vk_imgui.h)
 #include "vk_dlss.h"
@@ -5188,6 +5189,9 @@ void menu_tick() {
     if (!open_now.load() || page != 0 || listening != 0 || (tune_down && (GetAsyncKeyState(VK_TAB) & 0x8000)))
         tune_cancelled = true;
     if (tune_release) pad_last = false;
+    // (inhale: the software keyboard has the window's keys and its text while the game waits, issue #30. Its keys and the
+    // pad's buttons were taken above all the same, so none of them is a new press of the menu's once it closes)
+    if (kirby_swkbd::up()) return;
     {   // (RX_VK_UI_PROMPTS=pad or keys: the prompts for screenshots of test runs, which have no controller and no focus)
         static const char* force = getenv("RX_VK_UI_PROMPTS");
         if (force) pad_last = !strcmp(force, "pad");
@@ -5824,7 +5828,8 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h, in
     const bool start = startup_on.load(std::memory_order_acquire);
     const bool fps = opts.show_fps && !start;   // (no game frames yet: not "0 FPS" over the start-up screen)
     const bool open = open_now.load(std::memory_order_relaxed);
-    if (!start && !fps && !open) {   // (nothing shows: no ImGui frame, no render pass)
+    const bool swkbd = kirby_swkbd::up();   // (inhale: the software keyboard, over everything else while the game waits)
+    if (!start && !fps && !open && !swkbd) {   // (nothing shows: no ImGui frame, no render pass)
         // (but a new window size or Menu size since the last bake: one frame with nothing drawn that bakes the menu's glyphs
         // and measures its page for the new size, so the next open has no hitch whatever was resized while nothing showed)
         if (prebake_needed(w, h) && ui::begin(w, h)) {
@@ -5847,8 +5852,9 @@ void menu_record(VkCommandBuffer cmd, uint32_t index, uint32_t w, uint32_t h, in
     ui::Ctx c = ui_ctx(w, h);
     prebake(c);   // (the menu's glyphs at this size, before it opens: no hitch then)
     if (start) draw_startup(c);   // (under the menu)
-    if (open) draw_menu(c);
-    if (fps) draw_fps(c, open);
+    if (open && !swkbd) draw_menu(c);
+    if (swkbd) kirby_swkbd::draw(c);   // (inhale: over the menu's, which it keeps closed)
+    if (fps) draw_fps(c, open && !swkbd);   // (inhale: no menu banner to sit under while the keyboard covers it)
     ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (Dear ImGui records into cmd directly, its backend through its own pointers: what this thread recorded through vk_work.h reaches cmd first)
     ui::record(cmd, index, w, h, colour_vision);
 }

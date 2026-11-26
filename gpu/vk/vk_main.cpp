@@ -1961,6 +1961,8 @@ const char* describe() {
 MkwVkRenderer table;
 
 } // namespace
+/// (inhale) The window's size now, 0x0 minimized: the software keyboard presents no frame then (kirby_swkbd.cpp, issue #30)
+void kirby_window_size(uint32_t* w, uint32_t* h) { window_size(w, h); }
 /// (longshot) The shaders are being prepared (the start-up screen): the performance summary's "map" then (perf_report.cpp)
 bool shaders_preparing() { return prep_running.load(std::memory_order_relaxed); }
 /// (vk_internal.h: the driver compile that ended, for the watchdog above)

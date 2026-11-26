@@ -58,16 +58,23 @@ bool prebake_needed(uint32_t, uint32_t) { return resized; }
 void draw_startup(ui::Ctx&) { calls += "s"; }
 void draw_menu(ui::Ctx&) { calls += "m"; }
 void draw_fps(ui::Ctx&, bool under_banner) { calls += under_banner ? "F" : "f"; }
+namespace kirby_swkbd {   // (inhale: the software keyboard, issue #30: over the menu's, which it keeps closed)
+bool keyboard = false;
+bool up() { return keyboard; }
+void draw(ui::Ctx&) { calls += "K"; }
+}
 ''' + fn + r'''
 int main() {
-    for (bool startup : {false, true}) for (bool fps : {false, true}) for (bool menu : {false, true}) for (bool can : {true, false}) {
+    for (bool startup : {false, true}) for (bool fps : {false, true}) for (bool menu : {false, true})
+        for (bool can : {true, false}) for (bool keyboard : {false, true}) {
         opts.show_fps = fps;
         open_now = menu;
         startup_on = startup;
         can_draw = can;
+        kirby_swkbd::keyboard = keyboard;
         calls.clear();
         menu_record(1, 2, 640, 360);
-        if (!startup && !fps && !menu) {   // (nothing shows: no ImGui frame at all, only the reaping; after a resize, one bake)
+        if (!startup && !fps && !menu && !keyboard) {   // (nothing shows: no ImGui frame at all, only the reaping; after a resize, one bake)
             CHECK(calls == "i");
             calls.clear(), resized = true;
             menu_record(1, 2, 640, 360);
@@ -78,8 +85,9 @@ int main() {
         if (!can) { CHECK(calls == "b"); continue; }                           // (no ImGui here: nothing recorded)
         std::string want = "bp";
         if (startup) want += "s";
-        if (menu) want += "m";
-        if (fps && !startup) want += menu ? "F" : "f";
+        if (menu && !keyboard) want += "m";
+        if (keyboard) want += "K";
+        if (fps && !startup) want += menu && !keyboard ? "F" : "f";   // (inhale: no banner under the keyboard)
         want += "dr";   // (the recorder boundary right before the recording)
         CHECK(calls == want);
     }

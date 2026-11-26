@@ -76,6 +76,12 @@
 namespace mkwvk {
 extern std::recursive_mutex menu_mu;
 extern std::atomic<bool> movie_networks_slow;   // (vk_draw.cpp: the movie networks left out)
+// (inhale: the software keyboard's frames, issue #30: kirby_swkbd.h's vk_ui.h needs Dear ImGui's headers, which this file is
+// built without)
+namespace kirby_swkbd {
+int frame(const MkwVkSwkbd* state);
+void close();
+}
 int64_t presents_now;   // (the presents so far, for SlowWatch)
 /// (longshot) The last present confirmed *shown* by VK_KHR_present_wait, in microseconds from vkQueuePresentKHR to the
 /// frame reaching the screen: written by the presenter thread, taken by the frame trace. -1 when no present was waited
@@ -8332,6 +8338,8 @@ void fill_replay_table(MkwVkRenderer& t) {
     t.nvn_vmap_changing = vmap_changing;
     t.nvn_texture_created = texture_created_of;
     t.nvn_release_may_wait = release_may_wait;   // (inhale)
+    t.swkbd_frame = kirby_swkbd::frame;   // (inhale: the software keyboard, issue #30)
+    t.swkbd_close = kirby_swkbd::close;   // (inhale)
     t.output_preview_stage = [](const nvn_tex* targets) {
         const char* test = getenv("RX_VK_OUTPUT_PREVIEW_TEST");
         const char mode = !test ? 'k' : !strcmp(test, "no-frame") ? 'n' : !strcmp(test, "allocation") ? 'g' : 'k';

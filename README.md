@@ -42,6 +42,7 @@ sessions are lost.
 | Mouthful forms | ⚠️ Up to v0.6.0 Scissor-Lift Mouth and Ring Mouth were drawn wrong: a tiny, misplaced face, a pale flat body (issue #27). Fixed in v0.7.0, checked by hand on an AMD card on Linux; the other mouthful forms that drew the same way are not yet checked |
 | Star-Crossed World stages (the Switch 2 Edition's) | ⚠️ The first one played. Up to v0.2.0 its crystal covering vanished for single frames in a jump or a camera turn. Fixed in v0.3.0 |
 | Sound, music, movies and keyboard | ✅ Work |
+| Typing a text the game asks for (the post office's present code) | ⚠️ New in v0.8.0: the keyboard is Inhale's own, drawn over the picture, and the PC's keyboard types into it (a controller accepts or leaves it). Up to v0.7.0 the game was answered at once with nothing, so it said the code had been cancelled (issue #30). Not played by hand yet |
 | Saves | ⚠️ v0.4.0 and v0.4.1 kept no progress from one start to the next (issue #24). Fixed in v0.5.0; see below to bring back the last session's |
 | Controllers | ❓ Few reports yet. Rumble is played since v0.2.0, not yet felt on a pad in play. Local co-op with one controller per player: new in v0.4.1, not yet tried with two controllers |
 | Ultrawide (21:9, 32:9) and other shapes | ⚠️ New in v0.5.0: the world wider, the HUD, menus and movies at their own shape in the middle. Tried at 21:9 and 32:9 without a screen of that shape (the picture checked, not the play). 16:10 and 4:3 fill the screen too, the HUD and menus at their own shape, a little in from the top and bottom (up to v0.5.1 their right edge was cut there; up to v0.6.0 they were drawn too high, by 11% at 16:10). Up to v0.7.0 the menus' 2D effects were stretched on an ultrawide screen and some clipped texts were cut in the wrong place |
@@ -187,6 +188,15 @@ v0.7.0 it went to a 5.1 output on the front pair alone. **Audio, Centre in front
 Each of these four rows has an environment variable too, which wins over the row for that run and locks it:
 `HOS_DYNAMIC_RES=1`, `HOS_SCENE_HEIGHT=<lines>`, `HOS_KIRBY_QUEUE_ORDER=0`, `HOS_AUDIO_CENTRE=0`. Up to v0.5.1 three
 of them were environment variables only, with no row.
+
+**Typing a text the game asks for.** At the post office in Waddle Dee Town, **Present Code** asks for a code. Inhale
+draws a keyboard of its own over the picture and the PC's keyboard types into it: Enter accepts the text, Escape leaves
+without one. Only printable ASCII characters get in, as the menu's letters are the ones it draws. Only a keyboard
+types, but a controller accepts and leaves it with the buttons the game's A and B are on, so a player with no keyboard
+is never stuck on it (the game stays where it was until the text is in or the keyboard is left; minimizing the window
+keeps it). Up to v0.7.0 the game's request was answered with an empty text at once, so it said the code had been
+cancelled (issue #30). The environment variable `HOS_SWKBD=<text>` answers every request with that text, typed by
+nobody (its printable ASCII characters alone): for a scripted or headless run, or a PC with no keyboard.
 
 ### Reporting a problem
 

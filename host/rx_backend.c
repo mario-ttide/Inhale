@@ -453,6 +453,9 @@ static int host_take_text(int focus, uint32_t *out, int max) {
     ReleaseSRWLockExclusive(&text_lock);
     return n;
 }
+/* (inhale) the software keyboard's own reader of that queue (host/kirby_swkbd.c): the same focus and the same characters the
+   Insert menu takes, while the game waits in nn::swkbd::ShowKeyboard */
+int hos_text_take(int focus, uint32_t *out, int max) { return host_take_text(focus, out, max); }
 
 /* (hookshot) the Mods tab: host/mods.c, host/cheats.c */
 int hos_mod_info(int i, const char **name, const char **detail, const char **note, int *enabled);
@@ -676,6 +679,14 @@ void rx_close_asked(void) {
 }
 void rx_resize(int width, int height) { vk ? vk->resize(width, height) : wgr_resize(width, height); }
 const char *rx_describe(void) { return vk ? vk->describe() : wgr_describe(); }
+/* (inhale, version 46) the software keyboard's frame and its close (host/kirby_swkbd.c): the back end draws and presents it,
+   and says 0 when there is nothing to draw on (a headless run) */
+int rx_swkbd_frame(const MkwVkSwkbd *state) {
+    return vk && vk->swkbd_frame ? vk->swkbd_frame(state) : 0;
+}
+void rx_swkbd_close(void) {
+    if (vk && vk->swkbd_close) vk->swkbd_close();
+}
 void rx_stats(int64_t *draws, int64_t *skipped, int64_t *pipelines) {
     vk ? vk->stats(draws, skipped, pipelines) : wgr_stats(draws, skipped, pipelines);
 }

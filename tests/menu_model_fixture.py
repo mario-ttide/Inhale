@@ -9,7 +9,8 @@ fixture that compiles vk_menu.cpp's Row, ini_key, row_shown, is_slider or set_ro
 module's, Row.setting); "" for a checkout without the model (an older one a check is run against, --source).
 menu_model_member(root): the member a fixture's own Row stub needs for those to compile, "" likewise.
 
-menu_sources(root): the menu's source text, vk_menu.cpp's and every module's, for a check that looks for the menu's texts.
+menu_sources(root): the menu's source text, vk_menu.cpp's, every module's and this fork's software keyboard overlay's, for a
+check that looks for the menu's texts.
 
 built_menu(cxx): the menu as the model orders it, tab by tab: the model and every module compiled (gpu/vk/menu_module.h with
 vk_menu.h's Options in place of vk_menu.h, no Vulkan; MENU_LAYOUT_ONLY, so a module's hooks that ask the renderer, MENU_HOOK, are none) over a stand-in for the core module made from vk_menu.cpp's own text
@@ -50,7 +51,9 @@ def menu_model_member(root=None):
 
 def menu_sources(root=None):
     vk = _vk(root)
-    return "\n".join(p.read_text(encoding="utf-8") for p in [vk / "vk_menu.cpp", vk / "menu_module.h"] +
+    # (inhale: the software keyboard's overlay draws its own two texts, issue #30; an older checkout has no such file)
+    keyboard = [vk / "kirby_swkbd.cpp"] if (vk / "kirby_swkbd.cpp").exists() else []
+    return "\n".join(p.read_text(encoding="utf-8") for p in [vk / "vk_menu.cpp", vk / "menu_module.h"] + keyboard +
                      sorted((vk / "menu").glob("*.cpp")))
 
 

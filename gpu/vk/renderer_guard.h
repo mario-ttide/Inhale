@@ -52,6 +52,8 @@ inline void guard_renderer(MkwVkRenderer& t) {
     MKWVK_GUARD(output_trial_publish);
     MKWVK_GUARD(nvn_present_trial);
     MKWVK_GUARD(nvn_release_may_wait);   // (inhale) this fork's member of vk_api.h (version 45)
+    MKWVK_GUARD(swkbd_frame);            // (inhale) the software keyboard (version 46)
+    MKWVK_GUARD(swkbd_close);
 #undef MKWVK_GUARD
 }
 

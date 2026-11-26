@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#define MKWVK_API_VERSION 45   /* (42: input recordings; 43: reset and rebind; 44: binding_is_default; inhale 45: origin_lower_left, nvn_release_may_wait) */
+#define MKWVK_API_VERSION 46   /* (42: input recordings; 43: reset and rebind; 44: binding_is_default; inhale 45: origin_lower_left, nvn_release_may_wait; inhale 46: swkbd_frame, swkbd_close) */
 
 enum { OUTPUT_TRIAL_EXPIRED, OUTPUT_TRIAL_PREPARING, OUTPUT_TRIAL_READY, OUTPUT_TRIAL_ACTIVE, OUTPUT_TRIAL_SHOWN };
 enum { HOS_MONITOR_CURRENT = 1, HOS_MONITOR_PRIMARY = 2 };
@@ -438,6 +438,14 @@ typedef struct MkwVkJitter {
     uint32_t width, height, phases;
 } MkwVkJitter;
 
+/* (version 46, inhale) what the software keyboard shows (host/kirby_swkbd.c, gpu/vk/kirby_swkbd.cpp): the text typed so far
+   and its caret. A character a byte, printable ASCII: the menu's glyphs are baked for it (vk_imgui.cpp), and the game asks
+   for a present code */
+typedef struct MkwVkSwkbd {
+    char text[64];
+    int len, caret;
+} MkwVkSwkbd;
+
 /* what the back end gives the executable: the rx_* functions (gpu/render/rx_nvn.h, rx_core) */
 typedef struct MkwVkRenderer {
     uint32_t version;
@@ -520,6 +528,13 @@ typedef struct MkwVkRenderer {
        order lock held by a replay in progress (never when the replay is asynchronous): the host gives its thread's virtual
        core up around the call only then (host/rx_backend.c release_gives_core). NULL: given up for each release */
     int (*nvn_release_may_wait)(void);
+    /* (version 46, inhale) the software keyboard (issue #30, host/kirby_swkbd.c): one frame of it over the window, presented,
+       while the game's thread waits in the HLE. 1 drawn (a minimized window: up, nothing presented); 0 when there is nothing
+       to draw on (a headless run: no window), and the caller answers the game as a cancel. swkbd_close: nothing of it from
+       the next present on, which is the game's own.
+       gpu/vk/kirby_swkbd.cpp draws it, in present_image's frame (vk_menu.cpp's menu_record), as the start-up screen is */
+    int (*swkbd_frame)(const MkwVkSwkbd *state);
+    void (*swkbd_close)(void);
 } MkwVkRenderer;
 
 /* the DLL's one export: null when Vulkan is not usable (the executable then draws nothing) */

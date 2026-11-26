@@ -3314,3 +3314,90 @@ on a two-input sink there is nothing to mix down. Runs (`work/runs/i28/s5.sh`): 
 `the game's device sink has 2 channels: the output is stereo` and dumps two channels, at the same levels as `base6`'s
 front pair (RMS 2081 and 2038 against 2078 and 2036). `fix2` (`HOS_AUDIO_CHANNELS=2`) is stereo as before. Test:
 `tests/test_audio_sink_channels.py`.
+
+### 2026-11-26: issue #30, the post office's present code, cancelled at once
+
+Issue #30 says that a password typed in the post office of Waddle Dee Town is cancelled as soon as it is asked for.
+The cause is in the import list, not in the game.
+
+**The cause.** The game asks for a text through `nn::swkbd::ShowKeyboard`, the console's full-screen software keyboard
+applet, of which this port has none. Its five `nn::swkbd` imports (`MakePreset`, `SetGuideTextUtf8`,
+`GetRequiredWorkBufferSize`, `GetRequiredStringBufferSize`, `ShowKeyboard`) were generated stubs, and
+`a64_unimplemented` answers 0, which is success, having written nothing. The game allocated its answer with
+`GetRequiredStringBufferSize`'s 0 bytes, `ShowKeyboard` returned 0 without writing, and the game read a text of no
+characters back: its own "the player cancelled" path.
+
+**What the game does with the answer** (`main +0x807a0d20`, the wrapper that calls those five: `MakePreset` with
+preset 0, the guide text, two allocations at 0x1000 alignment, `ShowKeyboard(&string, &arg)`, then the result):
+
+- the `nn::swkbd::String` it is given is 16 bytes: at +0 a guest `uint16_t*` to write the answer into, at +8 how many
+  bytes it may hold. The answer goes there as UTF-16 with its 0 unit (the game scans the buffer for the 0; no length is
+  written anywhere else), and its own copy stops at 0x17F units;
+- the result: 0 is accepted, and a nonzero one with `result & 0x3FFFFF == 0x29F` is `nn::swkbd::ResultCanceled`.
+
+The `KeyboardConfig` the other three build is passed to `ShowKeyboard` and nowhere else, so this port reads none of it:
+`MakePreset`, `SetGuideTextUtf8` and `GetRequiredWorkBufferSize` stay stubs, and the keyboard's text is the overlay's
+own, translated like the menu's (`gpu/vk/menu_i18n_inhale.h`, "Accept" and "Enter the text").
+
+**The fix.** Two HLE functions in `host/kirby_swkbd.c` and an overlay of the renderer's:
+
+- `GetRequiredStringBufferSize` answers 0x1000 bytes: 0x800 UTF-16 units, four times the 0x17F the game reads, and
+  what the game allocates its answer with;
+- `ShowKeyboard` takes the keyboard up and waits, as the console's applet takes the screen: the window's thread puts
+  the characters and editing keys in the Insert menu's own queue (`host/rx_backend.c`, `take_text`), the text is edited
+  there (printable ASCII alone, the menu's glyphs; Backspace, Delete and the caret's keys; Enter accepted, Escape left),
+  and each frame is drawn and presented by `gpu/vk/kirby_swkbd.cpp` (MkwVkRenderer's `swkbd_frame`, "version 46").
+- The frame is `present_image(nullptr, ...)`, the start-up screen's route: the window's image cleared, the overlays on
+  it, which `vk_menu.cpp`'s `menu_record` draws (the Insert menu stays closed under it). No new Vulkan path and no
+  new thread: the game's own presenting thread waits in the HLE and presents.
+- No window to draw on (`HOS_HEADLESS=1`, no swapchain): the game hears the cancel at once, as before, so a scripted
+  run reaches the same place it did. A minimized window is not a cancel: the keyboard stays up with what was typed and
+  presents nothing until the window is shown again, as the start-up screen presents nothing then (`window_size`, 0x0;
+  `dev.swap_extent` is not cleared on a minimize). `HOS_SWKBD=<text>` answers with that text's printable ASCII and no
+  frame at all.
+
+**After review** (the first version of the fix):
+
+- The renderer never set `swkbd_frame` and `swkbd_close` in its table (`fill_replay_table`), so the host called
+  nothing, took it for "no window" and still answered a cancel at once: the bug itself, everywhere but `HOS_SWKBD`.
+  The test had a stand-in for the frame and could not see it; it now checks that every function of `MkwVkRenderer` is
+  set there or in `init_body`. `vk_replay.cpp` declares the two functions itself: `kirby_swkbd.h` brings `vk_ui.h`, and
+  Dear ImGui's headers are not on that file's include path.
+- A controller alone was stuck on the keyboard: only Enter and Escape ended it, and the Insert menu stays closed under
+  it. The buttons the Switch's A and B are bound to now accept and leave, as the menu's confirm and back
+  (`vk_menu_keys.h`), on a fresh press: the A that chose Present Code, still held, does not accept. The game's thread
+  reads no pads while it waits there, so `host/nn_hid.c` gives the keyboard a read of its own, `kirby_pads_poll`
+  (nothing while another window is in front, unless the pads count there).
+- Enter is bound to A, and `ShowKeyboard` returned on its key-down: at the game's next read it was a fresh A press,
+  which could dismiss the message after the code. The keyboard now stays up until Enter, Escape, every key bound to
+  one of the game's controls (a letter typed last, Space; not a mouse button) and the pad's two buttons are let go, and
+  for one frame more in any case: that frame's present runs `menu_tick`, which takes the
+  Insert menu's own record of the key (on Windows `host/display.c` notes every key-down for the menu), so an Escape
+  tapped between two frames does not open the menu once the keyboard is gone.
+- `menu_tick` returned at its top while the keyboard was up, so the window thread's key presses waited in their queue
+  and the pad's state went stale: once it closed, the Escape that left it opened the Insert menu, and the Enter, Q, E
+  and arrows typed acted on its rows. It now takes the keys and the pad as always and returns only before acting on
+  them; its other work (fullscreen, the output's countdown) goes on under the keyboard.
+- `present_image` can wait on V-Sync or a fence: the game thread's virtual core is given up around each frame
+  (`hos_vcore_away`), so the guest threads sharing it run meanwhile.
+- Smaller ones: a minimized window was meant to cancel but went on presenting (`dev.swap_extent` stays set), and is now
+  kept up with nothing presented; the FPS counter sat under the menu's banner while the keyboard covered the menu; the
+  Accept and Cancel prompts were left out when the text fit at no size; and `HOS_SWKBD` passed UTF-8 and control bytes
+  to the game a byte a unit, which now keeps its printable ASCII alone.
+
+**Checked.**
+
+- `tests/test_kirby_swkbd.py`: `host/kirby_swkbd.c`'s editing keys, its answer (UTF-16, NUL-terminated, capped by the
+  string's size and by 0x17F), the wait (a frame an iteration with the core given up, the focus on only while it is up,
+  closed once, kept up until Enter or the pad's button is let go), a controller's accept and leave, the result codes,
+  `HOS_SWKBD`, `nx2/standalone.py` hooking both functions where it used to stub them, the renderer's table setting
+  every function, and `menu_tick` (cut and compiled) taking the keys typed into the keyboard. It fails on the source
+  before the change, naming the import that answers nothing, and it fails when the answer's 0 unit is left out.
+- The back end alone compiles (`INHALE_VULKAN_HEADERS=/usr/include RX_VK_ONLY=1 python -I nx2/build.py --standalone`),
+  and `host/kirby_swkbd.c` compiles with gcc and clang `-fsyntax-only -Wall -Wextra`.
+
+**Not checked.**
+
+- A run in the game: whether the game's own call reaches a thread that may wait (it presents the picture itself), and
+  the keyboard's look in a window, at 16:10 and in HDR. The player's code has not been typed in yet.
+
