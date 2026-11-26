@@ -9514,8 +9514,9 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
                 vkCmdClearAttachments(cmd, 1, &black, 1, &rect);
             }
         }
+        if (wide.clipped) std::memcpy(s.scissor, wide.scissor, sizeof sc_game);   // (inhale) a layout's clip follows its narrowed pane (issue #20)
         dynamic_state(cmd, s, at, topo, d.mesh && !p.fallback, p);
-        std::memcpy(vp, vp_game, sizeof vp_game);   // (inhale)
+        std::memcpy(vp, vp_game, sizeof vp_game), std::memcpy(s.scissor, sc_game, sizeof sc_game);   // (inhale)
     }
     if (trace_tex_hit && texture_frame_no() % 30 == 0) {
         static std::atomic<int> told{0};

@@ -62,6 +62,21 @@ the layouts keep their shape at the picture's whole width and end short of its t
 - a wipe's layer: each of its draws heightened;
 - left: the same list, and a pane that slides in over the top edge, a whole pane moved up.
 
+A layout's clip (issue #20, the reporter's last shots; draws measured at 5120 x 1440 on Select a File, the world map
+and in a stage): a pane can have a scissor of its own, set by the game for the layout at 16:9, and the pane is drawn
+narrowed. The scissor dynamic_state sees must be the game's narrowed with the pane: an edge inside the viewport about
+the viewport's centre along the axis, and moved with a pane that is moved; an edge on the viewport's own edge stays:
+
+- File 1's "Wild Mode" ribbon, clipped to its card (the clip left as it was ended left of the card's middle: the
+  ribbon stuck out of the card and was cut after "Wild"), also with a viewport of 0 x 0; a clip about the centre; a
+  clip from the viewport's left edge (a portrait: its narrowed pane was not drawn at all); a clip in a viewport that
+  is not the target's; a corner pane's clip; clips one pixel wide, never handed on as no scissor and off the target
+  when narrowed to nothing; the game's scissor is back after the draw;
+- left: a clip over the whole viewport along the axis, a clip in a wipe's layer (its draw is widened back), a program
+  that reads no layout constants, a camera not narrowed, the other game, a target not 16:9;
+- a pane over the whole layout with a clip about the centre: the clip narrowed and no strip; with a clip from the
+  layout's side: that side's strip whole, the other none, and no gap before the draw's own clip.
+
 At 16:9 all of these are left.
 
 python -I -B tests/test_kirby_wide_keep.py [--cxx clang++]
@@ -561,6 +576,157 @@ int main(int argc, char** argv) {
     check(left(), "the other game's draw into a 16:9 target: left");
     oot = 0;
     for (const Nested& n : nested) check(n.depth == 1, "no draw of the block's own nests further");
+
+    // ---- A layout's clip (issue #20, the reporter's last shots; measured at 5120 x 1440: work/runs/i20c) ----
+    // A pane can have a scissor of its own, set by the game for the 16:9 layout (1.333 pixels a unit in the 2560 x 1440
+    // viewport). The pane is drawn narrowed, so the clip must be narrowed with it: about the viewport's centre by what
+    // the camera is narrowed by, along the axis, and moved as the pane is. sc: the game's; shift: the viewport's
+    at.color[0] = &window4k;
+    p.stages = {layout_vs};
+    sampled = {};
+    const auto clip = [&](int32_t x, int32_t y, int32_t w, int32_t h) { s.scissor[0] = x, s.scissor[1] = y, s.scissor[2] = w, s.scissor[3] = h; };
+    // (each edge of the clip inside the viewport is where it was in the layout: the same units from the centre under
+    // the narrowed camera as under the game's, within a pixel's rounding, and moved with the pane; an edge on the
+    // viewport's own edge stays there, as the layouts are not cut to the middle 16:9; across the axis the game's)
+    const auto follows = [&](const int32_t g[4], float shift, float from = 0.0f, float length = 0.0f) {
+        if (length == 0.0f) length = size[a];
+        const float centre = from + length * 0.5f;
+        const int32_t g0 = g[a], g1 = g[a] + g[2 + a], s0 = seen_sc[a], s1 = seen_sc[a] + seen_sc[2 + a];
+        const auto edge = [&](int32_t got, int32_t game, bool inside) {
+            return inside ? std::fabs(((float)got - shift - centre) / q - ((float)game - centre)) <= 0.5f / q + 0.01f : got == game;
+        };
+        return edge(s0, g0, (float)g0 > from) && edge(s1, g1, (float)g1 < from + length) && seen_sc[1 - a] == g[1 - a] && seen_sc[3 - a] == g[3 - a];
+    };
+    const auto sc_is = [&](int32_t x, int32_t y, int32_t w, int32_t h) { return seen_sc[0] == x && seen_sc[1] == y && seen_sc[2] == w && seen_sc[3] == h; };
+    const auto sc_back = [&](const int32_t g[4]) { return std::memcmp(s.scissor, g, 16) == 0; };
+    // (File 1's "Wild Mode" ribbon on Select a File: a 473 x 48 pane sliding in from the left under the 2.5D camera,
+    // clipped to its card. The clip not narrowed ended left of the narrowed card's middle: the ribbon stuck out of the
+    // card's left and was cut after "Wild")
+    const float ribbon[4] = {473, 48, 0, 24};
+    const int32_t ribbon_g[4] = {139, 721, 645, 86};
+    const float ortho_m00 = c3_mem[0], ortho_m11 = c3_mem[5];
+    c3_mem[0] = 2.53727f * (wide ? q : 1.0f), c3_mem[5] = 4.51071f * (tall ? q : 1.0f);
+    p.key = 0x6c84f81b9f707f46ull;
+    place(1.03f, -1034.52f, 1.03f, 32.96f);
+    clip(139, 721, 645, 86);
+    run(ribbon);
+    check(follows(ribbon_g, 0.0f), "the ribbon's clip: narrowed with its pane about the viewport's centre (lowered on a narrower picture; the game's at 16:9)");
+    if (picture > 3.5f) check(sc_is(709, 721, 323, 86), "the ribbon's clip at 32:9: columns 709 to 1032, inside its card (700 to 1050)");
+    if (wide && picture < 3.0f) check(sc_is(431, 721, 480, 86), "the ribbon's clip at 21:9: columns 431 to 911");
+    if (tall && picture > 1.5f) check(sc_is(139, 721, 645, 77), "the ribbon's clip at 16:10: rows 721 to 798");
+    if (tall && picture < 1.5f) check(sc_is(139, 721, 645, 64), "the ribbon's clip at 4:3: rows 721 to 785");
+    check(seen[0] == 0 && seen[1] == 0 && seen[2] == 2560 && seen[3] == 1440 && nested.empty(), "the ribbon's viewport: the game's, no strip");
+    check(sc_back(ribbon_g) && back(), "the game's scissor and viewport are back after the ribbon");
+    // (a viewport of 0 x 0 is the whole target: the same clip, and the viewport given back as 0 x 0)
+    s.viewport[0][2] = 0, s.viewport[0][3] = 0;
+    run(ribbon);
+    check(follows(ribbon_g, 0.0f) && s.viewport[0][2] == 0 && s.viewport[0][3] == 0 && sc_back(ribbon_g), "the ribbon's clip with a viewport of 0 x 0: narrowed about the target's centre");
+    s.viewport[0][2] = 2560, s.viewport[0][3] = 1440;
+    c3_mem[0] = ortho_m00, c3_mem[5] = ortho_m11;
+    // (a clip about the centre: the world map's stage panel, a 610 x 610 pane under the orthographic camera)
+    const float panel[4] = {610, 610, -305, 305};
+    const int32_t panel_g[4] = {880, 307, 800, 280};
+    p.key = 0x207e664b29885e2cull;
+    place(1, 0, 1, 0);
+    clip(880, 307, 800, 280);
+    run(panel);
+    check(follows(panel_g, 0.0f), "a clip about the centre: narrowed with its pane");
+    if (picture > 3.5f) check(sc_is(1080, 307, 400, 280), "a clip about the centre at 32:9: columns 1080 to 1480");
+    check(sc_back(panel_g), "the game's scissor is back after it");
+    // (a clip at the layout's left edge: a 154 x 168 HUD pane 7 units past the edge. The clip not narrowed was columns
+    // 0 to 168, and the narrowed pane, columns 635 to 723 at 32:9, was not drawn at all)
+    const float hud[4] = {154, 168, -77, 84};
+    const int32_t hud_g[4] = {0, 44, 168, 184};
+    p.key = 0x5cfce03bc8b25357ull;
+    place(0.85f, -902, 0.85f, -454);
+    clip(0, 44, 168, 184);
+    run(hud);
+    check(follows(hud_g, 0.0f), "a clip from the viewport's left edge: that edge stays, the other follows its pane");
+    if (picture > 3.5f) check(sc_is(0, 44, 724, 184), "a clip from the left edge at 32:9: columns 0 to 724, the pane's 635 to 723 inside");
+    if (tall && picture > 1.5f) check(sc_is(0, 112, 168, 165), "a clip from the left edge at 16:10: rows 112 to 277");
+    // (a viewport that is not the target's: about the viewport's own centre)
+    const int32_t part_g[4] = {600, 300, 1300, 650};   // (its far edge past the viewport's size, inside the viewport)
+    s.viewport[0][0] = 400, s.viewport[0][1] = 100, s.viewport[0][2] = 1600, s.viewport[0][3] = 900;
+    place(1, 0, 1, 0);
+    clip(600, 300, 1300, 650);
+    run(frost);
+    check(follows(part_g, 0.0f, a ? 100.0f : 400.0f, a ? 900.0f : 1600.0f), "a clip in a viewport of its own: narrowed about that viewport's centre");
+    if (picture > 3.5f) check(sc_is(900, 300, 650, 650), "a clip in a viewport from column 400, 1600 wide, at 32:9: columns 900 to 1550");
+    if (tall && picture > 1.5f) check(sc_is(600, 325, 1300, 585), "a clip in a viewport from row 100, 900 high, at 16:10: rows 325 to 910");
+    s.viewport[0][0] = 0, s.viewport[0][1] = 0, s.viewport[0][2] = 2560, s.viewport[0][3] = 1440;
+    // (a pane in one corner is moved to the picture's corner, and a clip of its own goes with it. No such draw was
+    // seen: the loading screen's blots have none)
+    const int32_t corner_g[4] = {0, 873, 1200, 567};   // (the top left blot's own columns and rows)
+    p.key = 0x17c677b41ed0780cull;
+    place(1, -960, 0.85f, 540);
+    clip(corner_g[0], corner_g[1], corner_g[2], corner_g[3]);
+    run(blot_l);
+    const float corner_shift = (a ? 1.0f : -1.0f) * half * (1.0f - q);
+    check(moved(-1, 1) && follows(corner_g, corner_shift), "a corner pane's clip: narrowed and moved with its pane");
+    if (picture > 3.5f) check(sc_is(0, 873, 600, 567), "a corner pane's clip at 32:9: its left edge on the picture's, 600 columns");
+    check(sc_back(corner_g), "the game's scissor is back after the corner's pane");
+    // (a clip one pixel wide can narrow to none: it must not become a scissor of 0 x 0, which is no scissor at all)
+    p.key = 0x5cfce03bc8b25357ull;
+    place(1, 0, 1, 0);
+    int none = 0, culled = 0;
+    for (int32_t at0 = 100; at0 < 140; at0++) {   // (of 40 places a pixel apart some narrow to no pixel, on every picture not 16:9)
+        clip(a ? 600 : at0, a ? at0 : 600, 1, 1);
+        run(frost);
+        none += !(seen_sc[2] > 0 && seen_sc[3] > 0);
+        culled += seen_sc[a] + seen_sc[2 + a] <= 0 || seen_sc[a] >= (int32_t)size[a];
+    }
+    check(none == 0, "a clip is never handed on as no scissor");
+    check(wide || tall ? culled > 0 && culled < 40 : culled == 0, "a clip narrowed to no pixel: off the target (nothing drawn); one that keeps a pixel: on it");
+    // Left as the game set them
+    const auto sc_left = [&](const int32_t g[4]) { return std::memcmp(seen_sc, g, 16) == 0; };
+    const int32_t band_g[4] = {a ? 300 : 0, a ? 0 : 300, a ? 400 : 2560, a ? 1440 : 400};   // (the whole viewport along the axis)
+    clip(band_g[0], band_g[1], band_g[2], band_g[3]);
+    run(frost);
+    check(sc_left(band_g) && left(), "a clip over the whole viewport along the axis: left");
+    clip(880, 307, 800, 280);
+    at.color[0] = &layer;
+    run(panel);
+    check(widened() && sc_left(panel_g), "a clip in a wipe's layer: the draw is widened back, the clip the game's");
+    at.color[0] = &window4k;
+    p.stages.clear();
+    run(panel);
+    check(sc_left(panel_g), "a clip of a program that reads no layout constants: left");
+    p.stages = {layout_vs};
+    c3_mem[0] = 2.0f / 1920.0f, c3_mem[5] = 2.0f / 1080.0f;
+    run(panel);
+    check(sc_left(panel_g), "a clip under a camera that is not narrowed: left");
+    c3_mem[0] = ortho_m00, c3_mem[5] = ortho_m11;
+    oot = 1;
+    run(panel);
+    check(sc_left(panel_g), "the other game's clip: left");
+    oot = 0;
+    Texture small_target{800, 280, true};
+    at.color[0] = &small_target;
+    run(panel);
+    check(sc_left(panel_g), "a clip in a target not 16:9: left");
+    // (a pane over the whole layout with a clip about the centre: the clip narrowed, and no strip beside the middle,
+    // where the game's clip leaves nothing)
+    at.color[0] = &window4k;
+    run(full);
+    check(follows(panel_g, 0.0f) && nested.empty(), "a whole pane with a clip about the centre: the clip narrowed, no strip");
+    // (a whole pane with a clip from the viewport's first column, or row, to 500: at 16:9 the layout's first part. The
+    // strip on that side is whole, the other none, and the draw itself goes on from the strip with no gap)
+    const int32_t first_g[4] = {0, 0, a ? 2560 : 500, a ? 500 : 1440};
+    clip(first_g[0], first_g[1], first_g[2], first_g[3]);
+    run(full);
+    if (wide || tall)
+        check(nested.size() == 1 && nested[0].sc[a] == 0 && nested[0].sc[2 + a] == mid0 && seen_sc[a] <= mid0 && follows(first_g, 0.0f),
+              "a whole pane with a clip from the first edge: that side's strip whole, the other none, no gap before the draw's own clip");
+    if (picture > 3.5f) check(sc_is(0, 0, 890, 1440), "a whole pane's clip from the first column to 500 at 32:9: columns 0 to 890");
+    // (and one that leaves the first 300 out and reaches the far edge: no strip on the near side, the far one whole)
+    const int32_t last_g[4] = {a ? 0 : 300, a ? 300 : 0, a ? 2560 : 2260, a ? 1140 : 1440};
+    clip(last_g[0], last_g[1], last_g[2], last_g[3]);
+    run(full);
+    if (wide || tall)
+        check(nested.size() == 1 && nested[0].sc[a] == mid1 && nested[0].sc[a] + nested[0].sc[2 + a] == (int32_t)size[a] && follows(last_g, 0.0f) &&
+              seen_sc[a] >= mid0, "a whole pane with a clip to the far edge: only the far side's strip, the near part cut inside the middle");
+    if (picture > 3.5f) check(sc_is(790, 0, 1770, 1440), "a whole pane's clip from column 300 at 32:9: columns 790 to 2560");
+    clip(0, 0, 2560, 1440);
     at.color[0] = &window;
 
     // (the factor on the header, as before)
@@ -606,10 +772,10 @@ def main():
                 failed.append(name)
     if failed:
         raise SystemExit("the pause background, cutscene bar, movie, wipe or loading screen of a picture not 16:9 is not as "
-                         "it should be, or another draw is changed: " + ", ".join(failed))
+                         "it should be, a layout's clip does not follow its pane, or another draw is changed: " + ", ".join(failed))
     print("PASS: the pause background and the cutscene bars at the picture's width, the movie at 16:9, a wipe's cover and "
-          "the loading screen out to the picture's edges, a wipe's layer at 16:9, at 32:9 and 21:9, and along y at 16:10 "
-          "and 4:3; HUD panes, hint videos, Copy, the other game and 16:9 left")
+          "the loading screen out to the picture's edges, a wipe's layer at 16:9, a layout's clip narrowed with its pane, at "
+          "32:9 and 21:9, and along y at 16:10 and 4:3; HUD panes, hint videos, Copy, the other game and 16:9 left")
 
 
 if __name__ == "__main__":

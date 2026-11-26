@@ -2529,6 +2529,127 @@ the later cutscenes and movies (a pane that ends short of the layout's top or bo
 a device whose highest viewport is under twice the viewport's height (the heightening instead of strips is tested,
 not seen); the handheld profile; 16:10 with the game's resolution steps on.
 
+**2026-11-26, the 2D effects and a layout's clip.** Issue #20's last comment, four shots at 5120 x 1440 on v0.7.0:
+a deleted file's explosion twice as wide as high and over the whole picture, the title's sparkles drawn out to the
+right of the Star-Crossed World logo, File 1's "Wild Mode" ribbon out of its card's left and cut after "Wild", and a
+thin white line at the bottom left of a stage, marked "?". The first three were seen again here (`work/runs/i20c/`,
+RX 7900 XTX, headless; `x1` a run steered by its shots, `b_del_*` the same presses as a script).
+
+- **Measured: the effects' views.** A per-draw log (`probe5.patch`, not kept) with the whole of vertex slot 5 for the
+  programs that read no layout constants. The effect programs (`de0087a4d1b98550`, `a0dce6d3515f7912`,
+  `99446480367b646d` on the title; `68e1fae15a631d89`, `17403539aec844d2`, `179366456585e790` for the explosion) take
+  a block of 592 bytes there: the view at +0, the projection at +64, their product, the three inverses, the eye. The
+  world's effects have the world camera's projection (0.603, 2.1445 at 32:9). The title's sparkles have the layouts'
+  orthographic 1920 x 1080 (0.00104167, 0.00185185) and the explosion their 2.5D camera (2.53727, 4.51071, the view at
+  z -2435.78): both still 16:9, so these draws covered the whole 16:9 window texture and the present stretched them.
+- **Who writes it** (gdb watchpoints on the block; an access watchpoint, since the same values are written each
+  frame and a write watchpoint reports only a change). The frame's buffer is a copy (`main+0x5ba2a0`, called by a
+  script's closure at `main+0x776a38`) of the effect system's block for that view (`[system+0x62d8] + view x 0x250`;
+  on the title two, the world's and the 2D one). That block is filled by another closure, `f_807962e4` (`main+0x7762e4`),
+  from a block of the script's own: `ldr x1, [x9, #0x10]` at `main+0x776334`, then the projection at `[x1]`, 4 x 4 by
+  columns, and the view at `[x1, #0x40]`. The interpreter (`main+0x7cff00`) copies that block in each frame with the
+  call's arguments. So the 2D camera's projection reaches the effects by a way of its own, not through `f_8087a75c`
+  where `kirby_wide_ui` sits.
+- **The change, game side** (`nx2/kirby_wide.py` `FX_SITE`, `FX_HOOK`; a sixth site): C after that load takes the
+  first two rows out of the script's block (word k of the first at +16k, of the second at +16k + 4), hands them to
+  `kirby_wide_ui` and stores the words it changed. One rule for the layouts and their effects: a projection still at
+  16:9 is narrowed by 16:9 over the ratio (lowered by the ratio over 16:9 on a narrower picture), one at the
+  picture's ratio is left, so the world's views pass. The hook's text is new: the game's C is lifted again.
+  Not done in the renderer (a viewport narrowed for a program that reads such a block): it would read guest memory
+  for every such draw, and the inverses in the block would not match what is drawn.
+- **Measured: the clips.** The same log, the draws whose scissor is not their viewport (`scis.py`), all by layout
+  programs under a narrowed camera into the window texture's 2560 x 1440 viewport:
+
+| draw | pane, in layout units | the game's scissor | seen at 5120 x 1440 before |
+|---|---|---|---|
+| the ribbon on Select a File (`6c84f81b9f707f46`, and its text `36da1a91054fc5e9`), 2.5D camera | 473 x 48 scaled 1.03, from x -1034 | 139, 721, 645 x 86 | out of the card's left, cut after "Wild" |
+| the stage panel on the world map (`207e664b29885e2c`) | 610 x 610 and 150 x 150 about the centre | 880, 307, 800 x 280; 1180, 587, 200 x 320 | a clip too wide: nothing seen |
+| the portrait in a dialog's left end (`5cfce03bc8b25357`) | 154 x 168 scaled 0.85 at x -902, 7 units past the layout's left edge | 0, 44, 168 x 184 | no portrait at all (the narrowed pane is columns 635 to 723) |
+| a world's name on the map (`36da1a91054fc5e9`, `f4bcf383...`), 2.5D camera | 664 x 148 and 490 x 26 scaled 0.8 at x 677 | 1857, 131, 651 x 150; 1868, 67, 629 x 54 | "Natural Plains" missing, its white line alone |
+
+  A scissor is in pixels for the layout at 16:9 (1.333 a unit), and the pane is drawn narrowed (0.667 a unit at
+  32:9) about the viewport's centre: a clip about the centre is only too wide, one off centre is in the wrong place.
+  The ribbon's ended at column 784 of 2560, left of the narrowed card's middle.
+- **The change, renderer** (`gpu/vk/kirby_wide.h` `clip` and `plan`, two lines of the same block of `draw`): for a
+  layout's program under a narrowed camera, the scissor is mapped as the pane is. An edge inside the viewport goes
+  about the viewport's centre by what the camera is narrowed by, then by the plan's shift (a pane in one corner
+  takes its clip to the picture's corner); a pixel is in when its centre is. An edge on the viewport's own edge
+  stays: there the game cuts nothing a 16:9 screen shows, and the layouts are not cut to the middle 16:9, since a
+  strip and a moved pane draw beside it. So a scissor over the whole viewport is itself, and the portrait's clip is
+  columns 0 to 724 at 32:9. `draw` sets the clip before `dynamic_state` and gives the game's back after it, as it
+  does the viewport. Left: a draw that is widened back (a layer's: the two factors' product is 1), any other
+  program, camera, target or game. A clip narrowed to no pixel is put off the target, a scissor of 0 x 0 being none.
+  The side strips are cut by the clip as drawn: one that reaches the layout's side goes on over that side's strip,
+  any other leaves the strips out. `plan`'s early returns became one chain, so that the clip is made once, before
+  the strips.
+- **The first form, and what a second agent found** reading the diff cold (it had the diff and the tests, not the
+  measurements). The first form narrowed both edges wherever the scissor did not span the viewport, and cut the
+  strips by the game's scissor. Two defects, both taken: a whole pane with a clip from the layout's side had its
+  strip cut at the game's column and its own clip started at the middle's edge, a gap between them (columns 500 to
+  640 for a clip of 0 to 500 at 32:9); and an edge on the viewport's edge was narrowed too, so a scissor one pixel
+  short of the viewport cut what the whole one did not. The edge rule above removes both, and the test for "spans
+  the viewport" with them. Its points on the tests are taken too: a viewport that is not the target's, a viewport of
+  0 x 0, exact values at 21:9 and 4:3, a clip that narrows to nothing on every shape, the strips of a clipped whole
+  pane, and words that are not 0 in the middle of the effect view's rows. It found nothing in the hook's C, in
+  `plan`'s chain against the old returns, in the block of `draw`, or at 16:9 and for the other game.
+- **The white line.** Not seen in a stage (the walk's first minute of Downtown Grassland, full-size shots). The
+  world's name on the map is the same picture: before the change the name's text was cut away and its white
+  underline, which has no clip, stood alone. A banner with a clipped text in a stage (a mission's notice) would
+  look as the reporter's shot does; that is a guess until it is seen, and the reply asks.
+- **Runs** (`work/runs/i20c/`; `b*` the tree before, `f*` with both changes and the game's C lifted again; shots at
+  the picture's own size, looked at):
+
+| run | picture | seen |
+|---|---|---|
+| `f_title_*` against `b_title_*`, present 300 | 5120 x 1440, 3440 x 1440 | the sparkles and shooting stars on and round the logo, as at 16:9 (`small/title_ref.jpg`); before, drawn out to its right |
+| the same | 1920 x 1200 | no difference seen (the largest 2.6) |
+| `f_del_5120` against `b_del_5120`: Select a File, Erase File, three dialogs | 5120 x 1440 | the ribbon inside its card with "Wild Mode" whole; the explosion in the middle 16:9, its smoke round; the stars' boxes 1.00, 1.00, 0.98 wide for 1 high (`star.py`, the median of 14 to 22 stars in presents 2130 to 2190) against 2.02, 1.96, 2.05 before |
+| `f_del_3440` against `b_del_3440` | 3440 x 1440 | the ribbon inside its card (before, whole but out of its left); the stars 1.00 and 1.02 against 1.36 |
+| `f_del_3840`, `b_del_3840` | 3840 x 2160 | the stars 1.00 in both: the measure's value at the game's shape. 166 of 166 frames; over 30 only presents 2130 and 2160, the explosion, whose smoke differs run to run |
+| `f2_walk_5120` against `b2_walk_5120`: town, world map, stage panel, a stage, pause, exit | 5120 x 1440 | 92 of 92 frames, one over 30 (41.2 at present 1740, a wipe: two runs of the tree before differ by 41.2 there). New in the shots: the portrait in the dialog, "Natural Plains" on the map, the ring round the town's star and the burst on a Waddle Dee on their objects, the pause menu's light circles in the middle. HUD, "To World Map", the stage panel, the loading screen, both wipes and the pause menu as before |
+| `f2_s5_5120` against `b_s5_5120`: S5's walk and a pause | 5120 x 1440 | 32 of 32 frames, the largest 13.0 (present 750, the star's landing and its sparkles) |
+| `f_walk_1920`, `f_s5_1920` against `b_*` | 1920 x 1200 | 98 of 98 and 32 of 33 frames, none over 30 (23.6 and 6.7 the largest); the row of triangles under the world's name is whole (before, cut: its clip was not lowered) |
+| `f_s5_3840` against `b_s5_3840` | 3840 x 2160 | 32 of 32 frames, the largest 4.0 |
+| `f3_del_5120`, `f3_walk_5120`, `f3_walk_1920`: the clip's second form | 5120 x 1440, 1920 x 1200 | as the `f` runs: the ribbon in its card, the portrait whole, "Natural Plains" and its triangles, the stars 1.00; against `b2_walk_5120` 92 of 92 frames, the largest 27.7, against `b_walk_1920` 97 of 98, the largest 20.5 |
+| `f_walk_3840`, `f2_walk_3840` against `b3_walk_3840` | 3840 x 2160 | 92 of 93 and 93 of 93 frames, one over 30 in each (39.4 and 39.2 at present 1740, the wipe again); the two `f` runs differ by 25.4 at most |
+
+  Frame rates as before (58 to 60 presents a second in each idle run). Each log has the same 12 lines that name an
+  error as its `b` run. A walk run while other work loaded the PC is no reference: the walks' presses are counted in
+  frames and the loads are not, so at 21 presents a second (`b_walk_3840`, shot tools running beside it) the same
+  present shows another screen. `b2`, `b3` and `f2` were run on the idle PC, the `b` ones with the change taken out
+  and the game's C lifted again.
+
+Tests: `tests/test_kirby_wide.py`, the C the install puts at `main+0x776334` run on a stand-in for guest memory: the
+orthographic and the 2.5D projection at 32:9, 21:9, 16:10 and 4:3 (the row and its fourth word scaled, two words
+stored, nothing else of the block or the view after it changed), the world's view and a 16:9 screen left with nothing
+stored; six sites, none with another word there. Before the fix `install: 5 sites, expected 6` and `build 395fc326,
+effect view at ratio 3.555556, m00 0.0010416667: 0.001042 0.2500 0.001852 0.5000 0 0, expected 0.000521 0.1250
+0.001852 0.5000 0 2` with four more of the kind for each build (`work/runs/i20c/test_wide_before.txt`).
+`tests/test_kirby_wide_keep.py`, the block and the header at the five shapes with the measured draws: the ribbon's
+clip (709, 721, 323 x 86 at 32:9, inside the card's columns 700 to 1050; columns 431 to 911 at 21:9, rows 721 to 798
+at 16:10 and to 785 at 4:3; the same with a viewport of 0 x 0), the clip about the centre, the portrait's from the
+viewport's edge (0 to 724), a clip in a viewport that is not the target's, a corner pane's moved with it, each edge
+inside the viewport where it was in the layout within a pixel, and the game's scissor back after the draw; of 40
+clips one pixel wide none handed on as no scissor, those narrowed to nothing off the target; left: a clip over the
+whole viewport along the axis, in a layer, of a program that reads no layout constants, under a camera not narrowed,
+of the other game, in a target not 16:9; a whole pane with a clip about the centre gets no strip, one with a clip
+from the layout's side that side's strip whole and no gap. Before the fix `32:9: FAIL: the ribbon's clip: narrowed
+with its pane about the viewport's centre (lowered on a narrower picture; the game's at 16:9)` and ten more, six at
+21:9 and at 16:10, five at 4:3, 16:9 `ok` (`test_keep_before.txt`, the test's first form); the cases added after the
+review failed on the first form of the fix (`test_keep_before2.txt`: the two whole panes with a clip on every shape,
+the portrait's edge at 32:9 and 21:9; its line about the ribbon's viewport on every shape was a mistake in the
+test's own order, put right). 36 changes to lines of the two fixes, one at a time, each print a `FAIL:`
+(`mutate.py`, `test_broken.txt`). The first test with gcc and clang, the second with g++ and clang++; the 153 checks
+that read `vk_draw.cpp` or name `kirby_wide` pass.
+
+Not checked: a real 21:9 or 32:9 screen and a window; the white line in a stage; a pane in one corner that has a
+clip (the rule is tested, no such draw seen); the effects and clips of screens not reached (shops, the map's other
+worlds, a boss, co-op, the Controls menu); the handheld profile. Still as before: a pane that reaches past the
+layout's side (Online Settings, Erase File, Saving...) ends at its own end beside the middle 16:9, where a 16:9
+screen cuts it; the smear beside the stage panel's picture; a dialog over a blurred capture shows the capture
+stretched. Also not checked: where a 2D effect lands on a thing far to the side of a wide picture (the two seen are on
+things near the middle, and on them).
+
 ### 2026-11-23: issue #22, a frame rate above 60 (research, nothing built)
 
 The reporter has a 144 Hz screen. They find frame generation's ghosting too strong and ask for a real frame rate above 60.

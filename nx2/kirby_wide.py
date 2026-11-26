@@ -34,7 +34,18 @@ row by ratio / (16 / 9) instead: the UI keeps its shape at the picture's whole w
 (issue #25). The pause menu's background is a capture of the whole picture drawn by such a camera; the renderer keeps
 that draw the picture's width, or its height (gpu/vk/kirby_wide.h).
 
-Gated on main's build id and the five words; another build leaves it out, and says so.
+The 2D effects (the title's sparkles, a button's stars, a deleted file's explosion; issue #20's later shots): the effect
+system draws each of its views with a projection a script hands it, through a closure (f_807962e4, main+0x7762e4) that
+fills the view's block (0x250 bytes: view, projection, their products and inverses) from the script's own (x1 after
+main+0x776334: the projection by columns, then the view). The world's views come with the world camera's projection,
+at the picture's ratio by then; the 2D views with the layouts' orthographic 1920 x 1080 or their 2.5D camera, neither
+through f_8087a75c, so those effects covered the whole 16:9 window texture and the present stretched them (2 times
+at 32:9). C after that load takes the projection's first two rows out of the script's block, hands them to
+kirby_wide_ui and stores the words it changed: one rule for the layouts and their effects. The script's block is
+written again each frame (the interpreter copies the call's arguments); a projection met a second time would be at
+the picture's ratio, and left.
+
+Gated on main's build id and the six words; another build leaves it out, and says so.
 """
 
 BUILD_ID = "395fc326c2e5b1651d937074f8cfd75de63184d9"
@@ -49,6 +60,16 @@ SITES = (
 UI_SITE = (0x85a808, 0x4c400900)   # ld4 {v0.4s-v3.4s}, [x8]   (f_8087a75c: the camera's +0x250)
 UI_HOOK = ("{ extern void kirby_wide_ui(uint64_t *r0, uint64_t *r1); kirby_wide_ui(c->vreg[0], c->vreg[1]); }"
            "   /* (nx2/kirby_wide.py: the HUD and menus at their 16:9 shape) */")
+# (offset in main, the game's word): x1 points at the block a script hands the effect system for one of its views, the
+# projection first, 4 x 4 by columns (its first row is every fourth word from +0, its second from +4)
+FX_SITE = (0x776334, 0xf9400921)   # ldr x1, [x9, #0x10]   (f_807962e4: the closure's third capture)
+_FX_WORD = "c->x[1] + 16 * (_i >> 1) + 4 * (_i & 1)"
+FX_HOOK = ("{ extern void kirby_wide_ui(uint64_t *r0, uint64_t *r1); uint32_t _m[2][4], _o[2][4]; uint64_t _r[2][2]; "
+           "for (int _i = 0; _i < 8; _i++) _m[_i & 1][_i >> 1] = (uint32_t)recomp_load32(c, " + _FX_WORD + "); "
+           "memcpy(_o, _m, 32); memcpy(_r, _m, 32); kirby_wide_ui(_r[0], _r[1]); memcpy(_m, _r, 32); "
+           "for (int _i = 0; _i < 8; _i++) if (_m[_i & 1][_i >> 1] != _o[_i & 1][_i >> 1]) "
+           "recomp_store32(c, " + _FX_WORD + ", _m[_i & 1][_i >> 1]); }"
+           "   /* (nx2/kirby_wide.py: the 2D effects at their 16:9 shape) */")
 
 
 def _hook(reg):
@@ -58,12 +79,13 @@ def _hook(reg):
 
 def install(lifter, img, main_base, build_id):
     """The hooks into lifter.after; returns how many (0 when this is another build or code)"""
-    hooks = [(off, old, _hook(reg)) for off, old, reg in SITES] + [(UI_SITE[0], UI_SITE[1], UI_HOOK)]
+    hooks = [(off, old, _hook(reg)) for off, old, reg in SITES] + [(UI_SITE[0], UI_SITE[1], UI_HOOK),
+                                                                    (FX_SITE[0], FX_SITE[1], FX_HOOK)]
     if build_id != BUILD_ID or any(img.word(main_base + off) != old for off, old, _ in hooks):
         print("wide cameras: unsupported camera code, left out")
         return 0
     for off, _, text in hooks:
         pc = main_base + off
         lifter.after[pc] = (lifter.after[pc] + "\n" if pc in lifter.after else "") + text
-    print("wide cameras: the 16:9 aspect at the screen's ratio, the UI at 16:9 (%d sites)" % len(hooks))
+    print("wide cameras: the 16:9 aspect at the screen's ratio, the UI and the 2D effects at 16:9 (%d sites)" % len(hooks))
     return len(hooks)

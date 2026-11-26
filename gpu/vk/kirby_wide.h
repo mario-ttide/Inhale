@@ -49,6 +49,15 @@
 // - The stage's name on the loading screen is a 1920 x 120 pane of text the GPU drew: a bar's shape. A bar's textures
 //   are the game's own uploads, so a pane that samples a texture the GPU drew is no bar.
 //
+// A pane's clip (docs/design.md, "the 2D effects and a layout's clip"; issue #20's later shots at 5120 x 1440): the game
+// sets a scissor for some panes (File 1's ribbon inside its card, a world's name, a portrait at the layout's left edge),
+// in the viewport's pixels for the layout at 16:9. The pane is drawn narrowed and the clip was not: the ribbon came
+// out of its card's left and was cut after "Wild", a name's text or the portrait was cut away whole. For a layout's
+// program under a narrowed camera the clip is narrowed with the pane, about the viewport's centre, and moved with a
+// pane that is moved (plan, clip). An edge of the clip on the viewport's own edge stays there (the layouts are not cut
+// to the middle 16:9: a strip and a moved pane draw beside it), so a scissor over the whole viewport along the axis is
+// left; and so is the clip of a draw that is widened back (a layer's).
+//
 // A picture narrower than 16:9 (16:10, 4:3; docs/design.md, "16:10 and 4:3: the HUD and menus at their own shape",
 // issue #25): the present squeezes the 16:9 window texture to the picture's width, so nx2/kirby_wide.py scales the
 // second row of every layout camera still at 16:9 by the ratio over 16:9 (0.9 at 16:10). The HUD and menus then have
@@ -232,13 +241,32 @@ inline int side_strips(const float vp[4], float ratio, const int32_t scissor[4],
     return n;
 }
 
-/// What draw() does for a draw: its viewport scaled by k about its centre along an axis, and side strips drawn first
+/// A scissor (x, y, width, height) the game set for a pane at 16:9, as the pane is drawn in the viewport vp. An edge
+/// inside the viewport goes about the viewport's centre by q (what the camera is narrowed by), then by shift pixels,
+/// along the axis; a pixel is in when its centre is. An edge on the viewport's own edge stays: there the game cuts
+/// nothing a 16:9 screen shows, and the layouts are not cut to the middle 16:9 (a strip and a moved pane draw beside
+/// it). One narrowed to no pixel is put off the target, since a width or a height of 0 is no scissor
+inline void clip(const int32_t scissor[4], const float vp[4], float q, float shift, int axis, int32_t out[4]) {
+    const int a = axis;
+    const float centre = vp[a] + vp[2 + a] * 0.5f;
+    const auto px = [&](int32_t x) { return (int32_t)std::ceil(centre + ((float)x - centre) * q + shift - 0.5f); };
+    const int32_t from = scissor[a], to = scissor[a] + scissor[2 + a];
+    for (int i = 0; i < 4; i++) out[i] = scissor[i];
+    out[a] = (float)from > vp[a] ? px(from) : from;
+    out[2 + a] = ((float)to < vp[a] + vp[2 + a] ? px(to) : to) - out[a];
+    if (out[2 + a] <= 0) out[a] = -1, out[2 + a] = 1;
+}
+
+/// What draw() does for a draw: its viewport scaled by k about its centre along an axis, side strips drawn first, and
+/// a scissor in place of the game's
 struct Plan {
     int axis = 0;   // (0: the viewport's x and width, 1: its y and height, on a picture narrower than 16:9)
     float k = 1.0f;
     float shift = 0.0f;   // (the viewport moves by this many pixels along the axis, after k)
     int strips = 0;
     Strip side[2];
+    bool clipped = false;   // (scissor is the draw's, the game's given back after it)
+    int32_t scissor[4];
 };
 
 /// A draw's plan, while this game runs on a picture wider than 16:9 and its first colour target (Texture: width, height)
@@ -246,9 +274,11 @@ struct Plan {
 /// back by the ratio over 16:9 in a target that is not the window texture (window: the last present's texture size,
 /// width << 16 | height; 0: no present yet), the side strips for a pane over the whole screen (corner_sides,
 /// side_strips; with a limit under twice the viewport it is widened instead), and for a pane in one corner the pixels
-/// its viewport moves by to put the pane in the picture's corner (off the target in a layer). vp and scissor
-/// are the game's; plain: the draw can be drawn again as it is (no mesh, indirect or query draw, no copy of its target
-/// open). sampled: the textures it samples (gpu_written). read(from, out, bytes) reads its layout constants and returns
+/// its viewport moves by to put the pane in the picture's corner (off the target in a layer). Such a draw's scissor
+/// is the game's for the pane at 16:9: its edges inside the viewport are narrowed and moved with the pane (clip), and
+/// it cuts the strips, unless the draw is widened back (a layer's: the two factors' product is
+/// 1). vp and scissor are the game's; plain: the draw can be drawn again as it is (no mesh, indirect or query draw, no
+/// copy of its target open). sampled: the textures it samples (gpu_written). read(from, out, bytes) reads its layout constants and returns
 /// false when it cannot (asked last: it reads guest memory). On a picture narrower than 16:9 the same along y (axis 1):
 /// heightened, lowered, a strip above and one below, moved up or down. limit: the device's widest and highest viewport
 /// (maxViewportDimensions), the one along the axis taken
@@ -279,11 +309,18 @@ Plan plan(bool this_game, float ratio, const Targets& at, const Program& p, uint
     const bool layer = window && window != (tw << 16 | (th & 0xffff));
     // (one corner: moved whole, by half of what the narrowing leaves of the viewport; in a layer, off the target. Side 1
     // is the left, or the bottom: towards 0 along the axis, the layout's +y being the higher row)
-    if (sides == 1 || sides == 2) return out.shift = (sides == 1 ? -v[2 + a] : v[2 + a]) * (layer ? 2.0f : (1.0f - narrowing(ratio)) * 0.5f), out;
-    if (layer) return out.k = widening(ratio), out;
-    if (sides != 3 || !plain) return out;
-    if ((float)limit[a] < v[2 + a] * 2.0f) return out.k = widening(ratio), out;
-    out.strips = side_strips(v, ratio, scissor, at.width, at.height, (float)limit[a], sides, a, out.side);
+    bool strips = false;
+    if (sides == 1 || sides == 2) out.shift = (sides == 1 ? -v[2 + a] : v[2 + a]) * (layer ? 2.0f : (1.0f - narrowing(ratio)) * 0.5f);
+    else if (layer) out.k = widening(ratio);
+    else if (sides == 3 && plain) {
+        if ((float)limit[a] < v[2 + a] * 2.0f) out.k = widening(ratio);
+        else strips = true;
+    }
+    // (a clip of the pane's own: the game's is where the pane was at 16:9. The strips are cut by the clip as it is
+    // drawn: a clip that reaches the layout's side goes on over that side's strip, any other leaves the strip out)
+    out.clipped = out.k == 1.0f && scissor[2] > 0 && scissor[3] > 0;
+    if (out.clipped) clip(scissor, v, narrowing(ratio), out.shift, a, out.scissor);
+    if (strips) out.strips = side_strips(v, ratio, out.clipped ? out.scissor : scissor, at.width, at.height, (float)limit[a], sides, a, out.side);
     return out;
 }
 

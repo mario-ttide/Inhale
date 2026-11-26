@@ -34,7 +34,9 @@ void kirby_wide_aspect(uint64_t *v) {
    a layout left alone was that much too high (11% at 16:10, issue #25): its second row is scaled by the ratio over
    16:9, so the layout has its own shape at the picture's whole width, centred, short of the top and bottom. Narrower
    by 1% at least, as the renderer's rules for what must still reach the top and bottom (gpu/vk/kirby_wide.h axis): a
-   layout lowered without them would leave a cutscene's bar short of the picture's edge */
+   layout lowered without them would leave a cutscene's bar short of the picture's edge.
+   The effect system's 2D views get the same projections from a script, in memory (main+0x776334, nx2/kirby_wide.py
+   FX_SITE): the lift's C there takes the two rows out of the script's block and calls this too */
 void kirby_wide_ui(uint64_t *r0, uint64_t *r1) {
     const float r = hos_wide_ratio, game = 16.0f / 9.0f;
     float x[4], y[4];
