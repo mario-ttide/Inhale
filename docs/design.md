@@ -3467,3 +3467,43 @@ barrier, copied back after the pass ends; a scene that cannot be copied into is 
 
 **Not checked.** The copy back in the game (no shot shows the next frame's lighting pass); the Compare panel switching
 presets live (headless: no menu); a window, HDR on, Windows, NVIDIA, Intel.
+
+### 2026-11-26: HDR in this game
+
+A report on v0.5.1 (Windows 11, RTX 3080): "HDR is still broken (highlights get crushed and contrast is like on 300%)".
+
+**The picture this game presents.** ScreenFilter tone-maps the scene to 0..1 and Copy draws it into the window texture,
+RGBA8 (section "issue #1, what a DLAA-class anti-aliasing would have to work with"). The game presents that texture as
+`RGBA8_SRGB` over an RGBA8 image: its bytes are sRGB-encoded. It never asks `nn::vi::QueryDisplayHdrStatus`
+(`host/nn_vi.c`), so it never presents upstream's RGB10A2 PQ picture: it has no HDR of its own.
+
+**Expanded was decoded twice.** `do_present` made the view the present's passes read (`direct_view`) in the picture's
+format, sRGB, so the sampler decoded it to linear. That view feeds `framegen_scale` (its uncropped path) and
+`framegen_hdr`. The HDR pass's Expanded (`hdr_encode.comp` mode 0) takes an sRGB-encoded picture and decodes it itself
+(`srgb_to_linear`), so the picture was decoded twice. Mid grey (sRGB 0.5) came out at 0.038 of the paper white instead
+of 0.214: a dark picture with far too much contrast, as reported. Upstream's game presents UNORM, so upstream never takes
+this path. Frame generation already read the picture through `present_view` (the image's own UNORM format, its bytes as
+they are). The fix makes `direct_view` that same view (`present_view`'s `format_out`). `source_srgb` is then false, and
+the colour-vision SDR pass decodes the encoded values itself, as it does for a UNORM picture. The SDR present without a
+pass is a blit of the image and does not use the view.
+
+**Native and the tone mapper are hidden.** Native tells the game its display is HDR10 and passes the game's PQ codes
+through. This game would go on presenting its SDR picture, which then takes the same expansion as Expanded. Its tone
+mapper row (PsychoV35) replaces upstream's game's tone map in the scene, which this game's scene never meets. So with this
+game the HDR row offers Off and Expanded (`menu_option_set`: the row's top is Expanded and its help speaks of Expanded
+alone), a saved Native runs as Expanded for the run (`oot_rows_hold`, as the other game's rows; the file keeps its
+value), and the tone mapper is one of the other game's rows (`is_oot_row`), held at Vanilla. The HDR contrast row's help
+drops its sentence on Native.
+
+**Checked.** `tests/test_kirby_hdr.py`: `present_view` and `do_present`'s view, cut from the source against a
+`texture_view` that makes a view in the picture's format unless one is asked for. An sRGB picture on an RGBA8 or BGRA8
+image is read as UNORM, not called sRGB, and Expanded's decode puts mid grey at 0.214 of the paper white. A UNORM
+picture and Native's RGB10A2 are read as before. Before the fix: `FAIL: a RGBA8_SRGB picture on a RGBA8 image: read as
+RGBA8_SRGB, Expanded shows mid grey at 0.038 x paper white, not 0.214 (decoded twice)`. The rows (`is_oot_row`,
+`env_override`, `saved_value`, `oot_rows_hold` and `menu_option_set`'s branch, cut from the source): with this game the
+HDR row stops at Expanded, a saved Native runs as Expanded and is saved as Native, the tone mapper is held at Vanilla,
+and both help texts are this game's. With the other game they are as before. Each of the four menu lines taken out
+fails the check.
+
+**Not checked.** The picture on an HDR display (none here): the reporter's screen, at Sharpness 0 and above 0, and
+HDR contrast 100% and 150%. The log line `the SDR picture expanded to HDR10` says which path runs.

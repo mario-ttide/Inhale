@@ -265,6 +265,14 @@ const char* const kLaptopHelpPlain =
     "For integrated graphics with 4 CPU threads or fewer (an i3 laptop's UHD Graphics): the plain window scale without "
     "sharpening, the handheld profile, smaller textures, Intel's shaders one at a time and quick compute builds. The "
     "handheld profile applies after a restart.";
+// (inhale) HDR's help and its contrast's where Native is not offered (menu_option_set): this game has no HDR of its own
+// (docs/design.md#2026-11-26-hdr-in-this-game), so only the SDR picture expanded
+const char* const kHdrHelpKirby =
+    "HDR10 out on an HDR display (Windows: Use HDR on in the display settings). Expanded: the game's SDR picture, its "
+    "white at the paper white and its highlights up to the peak.";
+const char* const kHdrContrastHelpKirby =
+    "The HDR picture's contrast around mid grey, as the RenoDX HDR mods grade it: above 100% deeper shadows and brighter "
+    "highlights, which ease into the peak brightness; below it flatter.";
 /// (longshot) Who made the made frames lately (vk_framegen.cpp framegen_maker), with Frame generation on; nullptr: none made.
 /// One name each, "<engine> FG", on the Frame generation by row and the FPS counter alike; "DLSS FG paused" where DLSS FG
 /// showed the game's frames alone (the game's own menus: vk_dlss.cpp dlss_fg_holds)
@@ -935,6 +943,9 @@ bool is_oot_row(const Row& r) {
            // (not the Aspect ratio: this game's cameras take the screen's ratio too, host/kirby_wide.c)
            // (Frame generation by: DLSS FG makes its frames from the temporal Upscaler's picture, which only the other game has)
            v == &opts.framegen_by ||
+           // (inhale) HDR's tone mapper: Native's alone, which this game does not have
+           // (docs/design.md#2026-11-26-hdr-in-this-game)
+           v == &opts.hdr_tonemap ||
            // (inhale) upstream's rows of v3.1.1 for the other game: Sprint (its hero's run, host/oot_sprint.c), its short
            // grass (Grass distance; Simulated turf and that page), and the controller speaker's rows for its sounds
            // (host/audio_source.h's classes, from Navi's voice). The HUD placement rows follow HUD layout, hidden above
@@ -4701,6 +4712,10 @@ void oot_rows_hold() {
         if (r.restart) restart_state.restart_value(restart_slot_of(r), row_restart_value(r));
         if (r.value == &opts.dlss || r.value == &opts.resolution) samplers_changed();   // (their LOD bias, as when the row is set)
     }
+    // (inhale) HDR's Native held at Expanded: this game presents an SDR picture and never asks for HDR10, so Native
+    // would show the same picture, with upstream's tone mapper over nothing (docs/design.md#2026-11-26-hdr-in-this-game).
+    // The row stops at Expanded (menu_option_set)
+    if (opts.hdr == 2) env_override(&opts.hdr, 1);
 }
 bool menu_hold_oot_rows() {
     if (oot_rows()) return false;
@@ -4740,6 +4755,10 @@ void menu_option_set(int id, int value) {
             else if (is_laptop_row(r)) r.help = kLaptopHelpPlain;
             else if (r.value == &opts.shadow_res)   // (inhale: host/kirby_shadow.c sizes the map once, as the file is read)
                 r.help = kShadowHelpKirby, r.hint = hn_shadow_res_kirby, r.restart = true;
+            else if (r.value == &opts.hdr)   // (inhale: Off and Expanded, no Native: design.md, "HDR in this game")
+                r.help = kHdrHelpKirby, r.hi = 1;
+            else if (r.value == &opts.hdr_contrast)
+                r.help = kHdrContrastHelpKirby;
         }
         oot_rows_hold();
         return;

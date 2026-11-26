@@ -36,7 +36,7 @@ def main():
     scale_source = a.scale_source.read_text(encoding="utf-8") if a.scale_source else source
     replay = block((ROOT / "gpu/vk/vk_replay.cpp").read_text(encoding="utf-8"), "void do_present(")
     # Wiring check only: resource/dispatch behavior is exercised by the real functions below.
-    capture = replay.index("direct_view = texture_view(")
+    capture = replay.index("direct_view = present_view(")   # (inhale: the picture's raw view, docs/design.md "HDR in this game")
     age = replay.index("texture_frame(completed());")
     assert replay.index("std::lock_guard lk(replay_mu)") < capture < age
     assert capture < replay.index("tex->last_frame = texture_frame_no();") < age

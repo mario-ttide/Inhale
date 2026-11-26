@@ -5179,10 +5179,13 @@ void frame_info(int64_t* replayed, int64_t* draws, int* width, int* height) {
 // are already encoded; the sRGB view would decode them to linear, and its passes store
 // that into UNORM images shown as if encoded: a darker, more contrasty picture than the
 // direct present's blit of the image's bytes. The image's own (UNORM) format reads them
-// as they are.
-VkImageView present_view(Texture* tex, const nvn_tex* t) {
+// as they are. The present's scale and HDR passes read it too (do_present): the HDR
+// pass's Expanded decodes sRGB itself, and decoded twice its picture was dark, its
+// contrast far too high (docs/design.md#2026-11-26-hdr-in-this-game). format_out: the
+// view's format.
+VkImageView present_view(Texture* tex, const nvn_tex* t, VkFormat* format_out = nullptr) {
     const bool raw8 = tex->format == VK_FORMAT_R8G8B8A8_UNORM || tex->format == VK_FORMAT_B8G8R8A8_UNORM;
-    return texture_view(tex, t, nullptr, VK_IMAGE_VIEW_TYPE_2D, ViewUse::Sample, nullptr,
+    return texture_view(tex, t, nullptr, VK_IMAGE_VIEW_TYPE_2D, ViewUse::Sample, format_out,
                         raw8 ? tex->format : VK_FORMAT_UNDEFINED);
 }
 
@@ -5517,7 +5520,7 @@ void do_present(const nvn_tex* t, const int crop[4], uint64_t native_generation 
         if (tex && !dev.offscreen && (direct_scale || colour_vision::enabled(menu_colour_vision_mode()))) {
             // Keep the sampled view with the same cached image as the direct present, before advancing its age.
             VkFormat sampled_format = VK_FORMAT_UNDEFINED;
-            direct_view = texture_view(tex, t, nullptr, VK_IMAGE_VIEW_TYPE_2D, ViewUse::Sample, &sampled_format);
+            direct_view = present_view(tex, t, &sampled_format);   // (inhale: the picture's bytes as they are)
             source_srgb = sampled_format == VK_FORMAT_R8G8B8A8_SRGB || sampled_format == VK_FORMAT_B8G8R8A8_SRGB ||
                           sampled_format == VK_FORMAT_A8B8G8R8_SRGB_PACK32;
             tex->last_frame = texture_frame_no();
