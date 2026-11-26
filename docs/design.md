@@ -3401,3 +3401,69 @@ own, translated like the menu's (`gpu/vk/menu_i18n_inhale.h`, "Accept" and "Ente
 - A run in the game: whether the game's own call reaches a thread that may wait (it presents the picture itself), and
   the keyboard's look in a window, at 16:10 and in HDR. The player's code has not been typed in yet.
 
+
+### 2026-11-26: issue #31, ReShade presets do nothing
+
+Issue #31 says that no preset of **Graphics, ReShade preset** changes the picture. The row's status stayed "Waiting for
+the gameplay scene" at all times.
+
+**The cause.** Upstream records a preset (`reshade::record`, `gpu/vk/reshade/fx_runtime.cpp`) in one place only: on
+its own game's gameplay upscale output, after the network that draws it (`vk_draw.cpp` `upscale_picture` and
+`finish_upscale_picture`: one of that game's two network keys, or a cooperative-matrix network reading and writing one
+format). This game never draws one. Its scene goes into the window texture by one Copy draw (section "the footer's
+render lines", "What draws this game's picture"), and its network under 720 lines reads an RGBA8 picture, which that
+rule refuses.
+
+**Where the preset goes.** The scene (`#358`, B10G11R11) holds the picture tone-mapped by ScreenFilter (0 to 1) when
+Copy samples it, and the HUD is drawn into the window texture after Copy: what `record` takes (a B10G11R11 picture, SDR)
+and where upstream records it ("before the HUD"). `gpu/vk/kirby_reshade.h` tells that draw as the footer's record does
+(`kirby_route::copy_drawn`: Copy's program, into a target of the last present's texture size that is not of the
+scene's format, sampling first a picture of the scene's format), with ReShade on. `draw()` then ends the pass and
+records the preset on the scene in place, after DLAA's commands (`temporal_pre_bloom`) and before Copy's pass begins.
+
+**The scene is read again next frame.** S5's pass trace (`work/runs/dohko/i26k_1080_on.txt`, frame 299): the frame's
+first post pass, `7e8ae0b3b6d8fe1e` (960 x 540, before the lighting pass writes the scene), samples the scene the frame
+before left, and its result reaches the lighting pass through `dcd996bb80fa0089` and `0e5ad7fb90cfe6e9`. A preset left
+in the scene would reach the next frame's lighting, and a colour grade could build up there. So the scene is copied
+aside before the preset (`feedback::keep`, `gpu/vk/vk_feedback.cpp`, the copies of "coloured discs on a Radeon 780M")
+and copied back when Copy's draw ends (`feedback::Draw`'s destructor, which ends the pass first). Two copies of the
+scene a frame while a preset draws; none while it is preparing or waiting (`record` false: the kept copy is given up).
+
+The preset binds a pipeline and descriptors of its own: Copy's draw sets all of its again (`cb.reset()`, as after
+DLAA's). Its descriptors are pushed again only when `same_desc` is false, so the preset runs only then; for this Copy
+it always is (the draw before it is the tone map's, or another picture's). `upscale_picture` and `fx_runtime.cpp` are
+as upstream has them.
+
+**Runs** (RX 7900 XTX, headless, S5's walk, 90 s each, shots every 600 frames; `work/runs/i31/`, `run.sh`):
+
+| preset | log | shots against Off |
+|---|---|---|
+| Warm (1) | `recording 1 pass(es) at 3840x2160 before the HUD (SDR)`, then at 5120x2880 | blue down about 12 of 255, red up 2 to 5 |
+| Cool (2) | the same | blue up about 10, red down 3 to 6 |
+| Serfrost (Recommended) (7), the first Clarity look | `recording 1 pass(es) at 5120x2880` | green up about 20: a brighter, more saturated look, as the preset is meant to be |
+| HDR Vibrance (4) | `This preset requires active Native HDR` | no change (upstream's rule in SDR) |
+| Depth View (5) | `waiting for gameplay depth (no current camera)` | no change |
+
+The HUD, the dialog box and the text drawn over the picture are the same in each. Two runs with no preset drawn differ
+by 3 to 6 of 255 on average (the walk's timing); the colour presets by 8 to 20.
+
+**Known limits.**
+
+- Depth View and Depth Haze wait for gameplay depth: `temporal_reshade_depth` is filled by upstream's camera capture,
+  which knows the other game only. Not looked into here.
+- Under 720 lines the game's network (or the blit in its place) draws the scene into the window texture instead of
+  Copy: no preset there.
+- A frame whose scene goes through a pass into an RGBA8 picture before Copy (seen in an older trace, `a1440.txt`,
+  program `c5defd56e2c80848` at the title) is not the draw either: no preset on such frames.
+- A preset is prepared for the scene's size (`Scene` in `fx_runtime.cpp`): when the dynamic resolution steps, the new
+  size is prepared again (1.9 to 15 ms off the game's thread), and the preset is left out of the frames meanwhile.
+
+**Checked.** `tests/test_kirby_reshade.py`: the rule (`kirby_reshade.h` compiled as it is: the Copy of the scene into
+the window texture and every refusal), `draw()`'s order (asked after `temporal_pre_bloom` and before any `begin_pass`,
+only when `!same_desc`, the pass ended, the scene kept before the preset, the keeping given up when the preset did not
+record), and `feedback::keep` cut from `vk_feedback.cpp` against stand-ins for Vulkan (the scene copied aside after a
+barrier, copied back after the pass ends; a scene that cannot be copied into is not kept). It failed before the fix
+(`kirby_reshade.h is missing`), and fails when the keeping is taken out or `keep` does not arm the copy back.
+
+**Not checked.** The copy back in the game (no shot shows the next frame's lighting pass); the Compare panel switching
+presets live (headless: no menu); a window, HDR on, Windows, NVIDIA, Intel.

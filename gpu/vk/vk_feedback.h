@@ -61,5 +61,11 @@ bool begin(Draw& draw, VkCommandBuffer cmd, uint16_t targets, Texture* const col
            const VkFormat color_format[8], const uint32_t color_level[8], const uint32_t color_layer[8], uint32_t width,
            uint32_t height);
 
+/// Outside a pass: `t` (its level 0 and layer 0, whole) is copied into a copy, which the draw's end copies back into it.
+/// What the draw's commands change in `t` meanwhile is then undone (a ReShade preset on this game's scene, which the
+/// next frame reads: kirby_reshade.h). False, and nothing recorded, when `t` cannot be copied from and into, or the
+/// draw holds copies already
+bool keep(Draw& draw, VkCommandBuffer cmd, const Texture* t);
+
 } // namespace feedback
 } // namespace mkwvk

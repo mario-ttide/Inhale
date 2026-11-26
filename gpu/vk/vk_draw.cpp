@@ -83,6 +83,7 @@
 #include "movie_upscale_policy.h"
 #include "skip_code.h"
 #include "kirby_post.h"   // (inhale) the Depth of field row
+#include "kirby_reshade.h"   // (inhale) ReShade on this game's scene
 #include "kirby_route.h"   // (inhale) the FPS counter footer's record for this game
 #include "kirby_upscale.h"   // (inhale) the stand-in for this game's upscale network
 #include "kirby_wide.h"   // (inhale) this game's pause background and bars at the picture's width, its movies at 16:9
@@ -9313,6 +9314,24 @@ void draw(VkCommandBuffer cmd, NvnState& s, const DrawArgs& d) {
     // (dynamic_state) and draw the 3D upside down
     const bool pre_recorded = temporal_pre_bloom(cmd, p.key, gfx_sampled(), at.color, at.n);
     if (pre_recorded) cb.reset();
+    // (inhale) A ReShade preset on this game's scene, before the Copy draw that puts it into the window texture, the HUD
+    // after it (kirby_reshade.h). The scene is kept aside and put back when this draw ends: the next frame's first post
+    // pass (7e8ae0b3b6d8fe1e) samples it. Its pipeline and descriptors are its own: this draw sets all of its again. Only
+    // for a draw that pushes its descriptors (!same_desc), as this one does: the draw before it, the tone map's or another
+    // picture's, bound others
+    feedback::Draw reshade_kept;
+    if (!same_desc && at.n && at.color[0] && !gfx_sampled().empty() && gfx_sampled()[0] &&
+        kirby_reshade::scene_copy(reshade::enabled.load(std::memory_order_relaxed), !menu_oot_rows(), p.key, at.color[0]->width,
+                                  at.color[0]->height, at.color[0]->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+                                  gfx_sampled()[0]->width, gfx_sampled()[0]->height,
+                                  gfx_sampled()[0]->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32)) {
+        end_pass(cmd);   // (a copy cannot be made in a pass)
+        if (feedback::keep(reshade_kept, cmd, gfx_sampled()[0])) {
+            // (the scene's record: the preset draws into its image, which is not the record's to change)
+            if (reshade::record(cmd, const_cast<Texture*>(gfx_sampled()[0]), 0, dev.hdr && opts.hdr == 2)) cb.reset();
+            else reshade_kept.cmd = VK_NULL_HANDLE;   // (no preset drawn: nothing to put back)
+        }
+    }
     static const bool barrier_every = env_on("RX_VK_BARRIER_EVERY_DRAW");   // (an experiment: a pass each)
     if (barrier_every) end_pass(cmd);
     reactive_scene_draw(cmd, p, s, at);

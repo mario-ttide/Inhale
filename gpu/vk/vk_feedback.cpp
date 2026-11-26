@@ -104,6 +104,37 @@ Copy* copy_for(const Draw& draw, VkFormat format, VkFormat view_format, VkImageC
     return c.image ? &s.copies.back() : nullptr;
 }
 
+/// Copies the target's level and layer into a copy of width x height (copy_for), after a barrier for the draws before
+/// it, and adds it to the draw's items, which Draw::end copies back. Null when no copy could be made. With s.mu held
+Copy* copy_in(Draw& draw, VkCommandBuffer cmd, const Texture* t, VkFormat view_format, uint32_t level, uint32_t layer,
+              uint32_t width, uint32_t height) {
+    State& s = st();
+    Copy* c = copy_for(draw, t->format, view_format, t->create_flags, width, height);
+    if (!c) {
+        if (!s.told) logf("vk: a copy of a %ux%u target (format %d) was not made: its draw is left as it is", width, height, (int)t->format), s.told = true;
+        return nullptr;
+    }
+    if (!draw.n) full_barrier(cmd, "barrier (feedback copy)");   // (the draws before, into the target)
+    // (the copy's layout, at each use: what it held is not wanted, and the recordings are not made in the order they run)
+    VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    b.srcStageMask = b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    b.srcAccessMask = b.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+    b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = c->image, b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    di.imageMemoryBarrierCount = 1, di.pImageMemoryBarriers = &b;
+    vkCmdPipelineBarrier2(cmd, &di);
+    VkImageCopy r{};
+    r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, layer, 1};
+    r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    r.extent = {width, height, 1};
+    vkCmdCopyImage(cmd, t->image, VK_IMAGE_LAYOUT_GENERAL, c->image, VK_IMAGE_LAYOUT_GENERAL, 1, &r);
+    c->used = texture_frame_no();
+    draw.item[draw.n++] = {t->image, c->image, level, layer};
+    return c;
+}
+
 } // namespace
 
 bool wanted() {
@@ -134,30 +165,7 @@ bool begin(Draw& draw, VkCommandBuffer cmd, uint16_t targets, Texture* const col
             level >= t->levels || layer >= t->layers || std::max(1u, t->width >> level) != width ||
             std::max(1u, t->height >> level) != height)
             continue;
-        Copy* c = copy_for(draw, t->format, color_format[i], t->create_flags, width, height);
-        if (!c) {
-            if (!s.told) logf("vk: a copy of a %ux%u target (format %d) was not made: its draw is left as it is", width, height, (int)t->format), s.told = true;
-            continue;
-        }
-        if (!draw.n) full_barrier(cmd, "barrier (feedback copy)");   // (the draws before, into the target)
-        // (the copy's layout, at each use: what it held is not wanted, and the recordings are not made in the order they run)
-        VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        b.srcStageMask = b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        b.srcAccessMask = b.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-        b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        b.image = c->image, b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        di.imageMemoryBarrierCount = 1, di.pImageMemoryBarriers = &b;
-        vkCmdPipelineBarrier2(cmd, &di);
-        VkImageCopy r{};
-        r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, layer, 1};
-        r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        r.extent = {width, height, 1};
-        vkCmdCopyImage(cmd, t->image, VK_IMAGE_LAYOUT_GENERAL, c->image, VK_IMAGE_LAYOUT_GENERAL, 1, &r);
-        c->used = texture_frame_no();
-        color_view[i] = c->view;
-        draw.item[draw.n++] = {t->image, c->image, level, layer};
+        if (const Copy* c = copy_in(draw, cmd, t, color_format[i], level, layer, width, height)) color_view[i] = c->view;
     }
     if (!draw.n) return false;
     draw.cmd = cmd, draw.width = width, draw.height = height;
@@ -169,6 +177,19 @@ bool begin(Draw& draw, VkCommandBuffer cmd, uint16_t targets, Texture* const col
             logf("vk: %.1f colour targets a frame drawn into a copy (RX_VK_FEEDBACK_COPY)", (double)tenths / 10), s.tenths = tenths;
         s.said = now, s.drawn = 0;
     }
+    return true;
+}
+
+bool keep(Draw& draw, VkCommandBuffer cmd, const Texture* t) {
+    const VkImageUsageFlags both = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if (!t || !t->image || t->type != VK_IMAGE_TYPE_2D || t->samples != VK_SAMPLE_COUNT_1_BIT || (t->usage & both) != both ||
+        draw.n)   // (Draw::end copies every item back at one size: a draw that keeps holds nothing else)
+        return false;
+    State& s = st();
+    std::lock_guard lk(s.mu);
+    free_dead();
+    if (!copy_in(draw, cmd, t, t->format, 0, 0, t->width, t->height)) return false;
+    draw.cmd = cmd, draw.width = t->width, draw.height = t->height;
     return true;
 }
 
