@@ -1044,7 +1044,9 @@ static int au_menu_output(void) {
    Auto: 6 when the default output has 5.1 or more speakers (au_layout_channels), else 2. The game asks once, at its start
    (GetActiveAudioDeviceChannelCountForOutput), and pans for that many, so a change takes a restart. Told 2 (always,
    before), it put nothing behind the player, and a 5.1 system played the whole game from the front speakers (issue
-   1124). Its device sink has the six channels either way; with two speakers they are mixed down. */
+   1124). Its device sink has the six channels either way; with two speakers they are mixed down.
+   (inhale) This game never asks: its sound engine adds a device sink of two inputs and pans in stereo whatever the
+   speakers, so the device opens stereo for it (au_out_channels, issue #28). */
 static int au_speakers(void) {
     static volatile int known;
     if (!known) {
@@ -1198,6 +1200,13 @@ static void output_stream_started(void) {
     out_stall_since = 0;
     out_played = out_peak = out_reported = out_completed = 0;
 }
+/* (inhale) The device's channels: the game's speakers, but stereo when its device sink takes fewer than six inputs.
+   This game's sound engine adds its sink with FL FR alone and pans in stereo even for 5.1 (issue #28): a 5.1 device
+   played it from the front pair only, where a stereo one lets Windows or a receiver spread it. No sink yet (0): the
+   speakers. */
+static int au_out_channels(int speakers, int sink_inputs) {
+    return speakers == 6 && sink_inputs > 0 && sink_inputs < 6 ? 2 : speakers;
+}
 /* The channels: the game's speakers (au_speakers). A 5.1 format no device takes is stereo instead: the device sink's
    six channels are then mixed down, nothing is lost. */
 static void output_open(void) {
@@ -1207,7 +1216,12 @@ static void output_open(void) {
     const int forced = override && *override, named = !forced && *out_wanted;
     const int selected = named && !out_force_default ? hos_audio_output_resolve(out_wanted) : -1;
     out_named_active = 0;
-    int channels = au_speakers();
+    int channels = au_out_channels(au_speakers(), sink_n);   /* (inhale) a stereo sink: stereo (issue #28) */
+    {
+        static int told;
+        if (channels != au_speakers() && !told)
+            told = 1, hos_log("audio: the game's device sink has %d channels: the output is stereo, as the game mixes it", sink_n);
+    }
     if (!dump_done) {
         const char *d = getenv("HOS_AUDIO_DUMP");
         if (d && (dump = fopen(d, "wb")) != NULL) {
@@ -1295,7 +1309,7 @@ static void output_move(const char *why) {
 static void output_retry_named(void) {
     const int selected = hos_audio_output_resolve(out_wanted);
     if (selected < 0) { output_named_failed(); return; }
-    int channels = dump ? out_channels : au_speakers();
+    int channels = dump ? out_channels : au_out_channels(au_speakers(), sink_n);   /* (inhale) issue #28 */
     WAVEFORMATEX f = {0};
     f.wFormatTag = WAVE_FORMAT_PCM;
     f.nChannels = channels;
@@ -1811,7 +1825,8 @@ static HANDLE renderer_thread;
 static DWORD WINAPI renderer_main(void *p) {
     (void)p;
     hos_thread_boost(2);
-    output_open();
+    int opened = 0;   /* (inhale) the output opens when the renderer starts, once the game added its device sink: this
+                         game adds it after OpenAudioRenderer, and its inputs decide the channels (au_out_channels) */
     int64_t period = 5000000, next = hos_now_ns() + period;   /* one audio frame: 240 samples at 48 kHz */
     static int16_t pcm[FRAME * OUT_MAX_CH];
     float gain = 1.0f, gain_want = 1.0f;
@@ -1820,6 +1835,7 @@ static DWORD WINAPI renderer_main(void *p) {
         hos_sleep_ns(next - hos_now_ns());
         next = audio_mix_deadline(hos_now_ns(), next, period);
         if (!renderer_running) continue;
+        if (!opened) opened = 1, output_open(), next = hos_now_ns() + period;   /* (the open's time not caught up in a burst) */
         output_route_update();
         au_lock();
         if (ncmds && hos_now_ns() - last_update_ns > 50000000) commit();   /* (no update came: see "parameter updates") */
@@ -2150,6 +2166,10 @@ HLE(_ZN2nn5audio16RemoveDeviceSinkEPNS0_19AudioRendererConfigEPNS0_14DeviceSinkT
     sink_mix = -1;
     au_unlock();
 }
+/* (inhale) The sink's down-mix, 6 channels to 2 on a stereo device: this game sets it on its two-input sink, where it
+   mixes nothing. The device sink mixes down by its own fixed gains (render_frame). */
+HLE(_ZN2nn5audio19SetDownMixParameterEPNS0_14DeviceSinkTypeEPKNS1_16DownMixParameterE) {}
+HLE(_ZN2nn5audio26SetDownMixParameterEnabledEPNS0_14DeviceSinkTypeEb) {}
 
 /* ---- voices ----------------------------------------------------------------------------------------------------- */
 /* AcquireVoiceSlot(config, VoiceType*, int sampleRate, int channelCount, SampleFormat, int priority,

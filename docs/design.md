@@ -3170,3 +3170,26 @@ the row; `HOS_KIRBY_KEEP_SPEED=1`; 600 s at 1080 lines; `work/runs/dohko/i26k_*`
   28.2, 38.6 with the row on: `sum.py`). And the walk's presses are timed by presents, so with the game at its own
   speed Kirby walks further on the same presses and the scene is not the same one. So the 14.7 with the row on
   against 17.2 off, and the 18.4 at 30, are not a cost or a gain of the row. The speeds are what these runs measure.
+
+### 2026-11-26: issue #28, 5.1 chosen and the game plays stereo
+
+The report: the Speaker layout on 5.1, and the game plays from the front pair only. The log had `device sink on mix 0,
+2 channels (0 1 0 0 0 0)`, the output opened 5.1, and `SetDownMixParameterEnabled` unimplemented.
+
+What the game does (its sound engine at `0x80588880`, read in the lifted code): it acquires a final mix of six buffers
+(two when a byte of its own settings says so), then adds the device sink with a constant two (`mov w4, #2`, the input
+table `{0, 1}`), then calls `SetDownMixParameter` and `SetDownMixParameterEnabled` on it. It never calls
+`GetActiveAudioDeviceChannelCountForOutput` or `AcquireAudioDeviceNotificationForOutput`, and it never removes and
+re-adds its sink. So nothing the host answers makes it mix for six speakers. A 75 s S5 walk with
+`HOS_AUDIO_CHANNELS=6` and a temporary log of the final mix's six buffers: only buffers 0 and 1 carried sound, buffers
+2 to 5 were 0 in every second (`work/runs/i28/base6.txt`). The engine pans in stereo. Hooking the engine into
+surround (finding where it keeps its output mode) was left out: unknown work, and not what the game was made to play.
+
+Built (`host/nn_audio.c`, marked `inhale`): `au_out_channels` opens the output stereo when the speakers are 5.1 and the
+device sink has fewer than six inputs, so Windows or a receiver can spread the stereo (upstream's game, with six
+inputs, is unchanged). The renderer thread now opens the output at the renderer's start rather than when the renderer
+opens, because this game adds its sink after `OpenAudioRenderer`. The two down-mix calls are HLEs that do nothing:
+on a two-input sink there is nothing to mix down. Runs (`work/runs/i28/s5.sh`): `fix6` (`HOS_AUDIO_CHANNELS=6`) logs
+`the game's device sink has 2 channels: the output is stereo` and dumps two channels, at the same levels as `base6`'s
+front pair (RMS 2081 and 2038 against 2078 and 2036). `fix2` (`HOS_AUDIO_CHANNELS=2`) is stereo as before. Test:
+`tests/test_audio_sink_channels.py`.

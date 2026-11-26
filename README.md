@@ -176,9 +176,10 @@ Kirby or an enemy passes through a wall or a floor, or a timer runs wrong, turn 
 (after a restart) and report what you see. It hands the game's graphics work to your PC in the order of v0.2.0
 and before, in which the crystal covering of the Star-Crossed World stages vanishes for single frames.
 
-**Sound on 5.1.** When the game mixes for 5.1, the centre channel also goes to the front pair at -3 dB, so a headset's
-virtual surround or a driver that drops the centre still plays what is on it. Turn **Audio, Centre in front
-speakers** off (after a restart) to keep the centre on its own channel only.
+**Sound on 5.1.** The game's own sound engine mixes in stereo, whatever the speakers: with the Speaker layout on 5.1
+the sound still comes out in stereo, so that Windows or your receiver can spread it over the other speakers. Up to
+v0.7.0 it went to a 5.1 output on the front pair alone. **Audio, Centre in front speakers** (and
+`HOS_AUDIO_CENTRE`) only acts on a 5.1 mix, so it has nothing to do in this game.
 
 Each of these four rows has an environment variable too, which wins over the row for that run and locks it:
 `HOS_DYNAMIC_RES=1`, `HOS_SCENE_HEIGHT=<lines>`, `HOS_KIRBY_QUEUE_ORDER=0`, `HOS_AUDIO_CENTRE=0`. Up to v0.5.1 three

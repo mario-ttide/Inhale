@@ -124,6 +124,7 @@ static uint32_t au_default_key(void) { return default_key; }
 static void au_opened(HWAVEOUT w) { (void)w; }
 static int speakers = 2;   /* (the game's speakers: 6 in the "surround" and "fallback" cases) */
 static int au_speakers(void) { return speakers; }
+static int sink_n = 6;   /* (the game's device sink: six inputs, so the speakers decide (au_out_channels)) */
 static const WAVEFORMATEX *au_format(const WAVEFORMATEX *f) { return f; }
 #define getenv test_getenv
 #define env_on(name) (getenv(name) && !env_value_off(getenv(name)))   /* (the switches read through the stand-in above) */
@@ -170,8 +171,10 @@ int main(int argc, char **argv) {
     fail_open = !strcmp(scenario, "open");
     if (!strcmp(scenario, "bounded")) fail_prepare = -1;
     if (!strcmp(scenario, "surround") || !strcmp(scenario, "fallback") || !strcmp(scenario, "upmix") ||
-        !strcmp(scenario, "downmix") || !strcmp(scenario, "retry"))
+        !strcmp(scenario, "downmix") || !strcmp(scenario, "retry") || !strcmp(scenario, "stereo-sink"))
         speakers = 6;
+    const int stereo_sink = !strcmp(scenario, "stereo-sink");   /* (inhale) issue #28: this game's two-input sink */
+    if (stereo_sink) sink_n = 2;
     fail_open6 = !strcmp(scenario, "fallback") || !strcmp(scenario, "upmix");
     opens_fail = !strcmp(scenario, "retry") || !strcmp(scenario, "same-layout-retry");
     output_open();
@@ -374,9 +377,14 @@ int main(int argc, char **argv) {
         frames(40, 1);
         CHECK(!prepare_calls && !write_calls && logs == 3);
         CHECK(strstr(last_log, "waveOutOpen") && strstr(last_log, "7"));
-    } else if (open_calls != 1 || last_device != WAVE_MAPPER || logs != 1 || !strstr(last_log, "default device")) {
+    } else if (open_calls != 1 || last_device != WAVE_MAPPER || logs != 1 + stereo_sink || !strstr(last_log, "default device")) {
         CHECK(0);   /* (a working default is opened first, and named in the log) */
-    } else if ((logs = 0), !strcmp(scenario, "surround")) {
+    } else if ((logs = 0), stereo_sink) {   /* (inhale) 5.1 speakers, a two-input sink: the device opens stereo */
+        CHECK(last_channels == 2 && out_channels == 2 && strstr(last_log, "stereo"));
+        CHECK(hdr[0].dwBufferLength == FRAME * 2 * 2 * 2);
+        frames(10, 1);
+        CHECK(accepted == 5 && !logs);
+    } else if (!strcmp(scenario, "surround")) {
         CHECK(last_channels == 6 && out_channels == 6 && strstr(last_log, "5.1"));
         CHECK(hdr[0].dwBufferLength == FRAME * 2 * 6 * 2);   /* (two frames of six 16-bit channels) */
         frames(40, 1);
